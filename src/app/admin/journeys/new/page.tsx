@@ -1,0 +1,608 @@
+"use client";
+
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { motion, AnimatePresence } from "framer-motion";
+import { createClient } from "@/lib/supabase/client";
+import {
+  ArrowLeft,
+  ArrowRight,
+  Check,
+  Loader2,
+  Heart,
+  MapPin,
+  Users,
+  Lock,
+} from "lucide-react";
+import Link from "next/link";
+
+type Step = 1 | 2 | 3;
+
+interface Participant {
+  name: string;
+  age: string;
+  role: string;
+  interests: string;
+  isRecipient: boolean;
+}
+
+interface Destination {
+  name: string;
+  country: string;
+  startDate: string;
+  endDate: string;
+}
+
+export default function NewJourneyPage() {
+  const router = useRouter();
+  const supabase = createClient();
+
+  const [step, setStep] = useState<Step>(1);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Step 1: Basic Info
+  const [journeyName, setJourneyName] = useState("");
+  const [recipientName, setRecipientName] = useState("");
+  const [recipientEmail, setRecipientEmail] = useState("");
+  const [slug, setSlug] = useState("");
+  const [accessCode, setAccessCode] = useState("");
+
+  // Step 2: Participants
+  const [participants, setParticipants] = useState<Participant[]>([
+    { name: "", age: "", role: "", interests: "", isRecipient: true },
+  ]);
+
+  // Step 3: Destinations
+  const [destinations, setDestinations] = useState<Destination[]>([
+    { name: "", country: "", startDate: "", endDate: "" },
+  ]);
+
+  const generateSlug = (name: string) => {
+    return name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/(^-|-$)/g, "");
+  };
+
+  const handleRecipientNameChange = (value: string) => {
+    setRecipientName(value);
+    if (!slug || slug === generateSlug(recipientName + "-adventure")) {
+      setSlug(generateSlug(value + "-adventure"));
+    }
+  };
+
+  const addParticipant = () => {
+    setParticipants([
+      ...participants,
+      { name: "", age: "", role: "", interests: "", isRecipient: false },
+    ]);
+  };
+
+  const removeParticipant = (index: number) => {
+    if (participants.length > 1) {
+      setParticipants(participants.filter((_, i) => i !== index));
+    }
+  };
+
+  const updateParticipant = (index: number, field: keyof Participant, value: string | boolean) => {
+    const updated = [...participants];
+    updated[index] = { ...updated[index], [field]: value };
+    setParticipants(updated);
+  };
+
+  const addDestination = () => {
+    setDestinations([
+      ...destinations,
+      { name: "", country: "", startDate: "", endDate: "" },
+    ]);
+  };
+
+  const removeDestination = (index: number) => {
+    if (destinations.length > 1) {
+      setDestinations(destinations.filter((_, i) => i !== index));
+    }
+  };
+
+  const updateDestination = (index: number, field: keyof Destination, value: string) => {
+    const updated = [...destinations];
+    updated[index] = { ...updated[index], [field]: value };
+    setDestinations(updated);
+  };
+
+  const handleSubmit = async () => {
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not authenticated");
+
+      // Create journey
+      const { data: journey, error: journeyError } = await supabase
+        .from("journeys")
+        .insert({
+          curator_id: user.id,
+          name: journeyName,
+          recipient_name: recipientName,
+          recipient_email: recipientEmail || null,
+          unique_slug: slug,
+          access_code: accessCode || null,
+          is_published: false,
+        })
+        .select()
+        .single();
+
+      if (journeyError) throw journeyError;
+      if (!journey) throw new Error("Failed to create journey");
+
+      // Create participants
+      const participantData = participants
+        .filter((p) => p.name.trim())
+        .map((p, index) => ({
+          journey_id: journey.id,
+          name: p.name,
+          age: p.age ? parseInt(p.age) : null,
+          role: p.role || null,
+          interests: p.interests ? p.interests.split(",").map((i) => i.trim()) : [],
+          is_recipient: p.isRecipient,
+          order_index: index,
+        }));
+
+      if (participantData.length > 0) {
+        const { error: participantError } = await supabase
+          .from("participants")
+          .insert(participantData);
+
+        if (participantError) throw participantError;
+      }
+
+      // Create destinations
+      const destinationData = destinations
+        .filter((d) => d.name.trim())
+        .map((d, index) => ({
+          journey_id: journey.id,
+          name: d.name,
+          country: d.country || null,
+          start_date: d.startDate || null,
+          end_date: d.endDate || null,
+          order_index: index,
+        }));
+
+      if (destinationData.length > 0) {
+        const { error: destError } = await supabase
+          .from("destinations")
+          .insert(destinationData);
+
+        if (destError) throw destError;
+      }
+
+      // Redirect to journey management
+      router.push(`/admin/journeys/${journey.id}`);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to create journey";
+      setError(message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const canProceed = () => {
+    switch (step) {
+      case 1:
+        return journeyName.trim() && recipientName.trim() && slug.trim();
+      case 2:
+        return participants.some((p) => p.name.trim());
+      case 3:
+        return destinations.some((d) => d.name.trim());
+      default:
+        return false;
+    }
+  };
+
+  return (
+    <div className="max-w-2xl mx-auto">
+      {/* Back link */}
+      <Link
+        href="/admin"
+        className="inline-flex items-center gap-2 text-[#6B5344] hover:text-[#2C1810] mb-8"
+      >
+        <ArrowLeft className="w-4 h-4" />
+        Back to dashboard
+      </Link>
+
+      {/* Header */}
+      <div className="text-center mb-8">
+        <h1 className="font-serif text-3xl text-[#2C1810] mb-2">Create New Journey</h1>
+        <p className="text-[#6B5344]">Set up a magical travel experience</p>
+      </div>
+
+      {/* Progress Steps */}
+      <div className="flex items-center justify-center gap-4 mb-8">
+        {[1, 2, 3].map((s) => (
+          <div key={s} className="flex items-center">
+            <div
+              className={`w-10 h-10 rounded-full flex items-center justify-center font-medium ${
+                s < step
+                  ? "bg-[#C9A227] text-white"
+                  : s === step
+                  ? "bg-gradient-to-r from-[#E07B39] to-[#C9A227] text-white"
+                  : "bg-[#E5DDD5] text-[#6B5344]"
+              }`}
+            >
+              {s < step ? <Check className="w-5 h-5" /> : s}
+            </div>
+            {s < 3 && (
+              <div
+                className={`w-16 h-0.5 ${
+                  s < step ? "bg-[#C9A227]" : "bg-[#E5DDD5]"
+                }`}
+              />
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Step Labels */}
+      <div className="flex justify-between mb-8 px-4">
+        <span className={`text-sm ${step >= 1 ? "text-[#2C1810]" : "text-[#6B5344]"}`}>
+          Basic Info
+        </span>
+        <span className={`text-sm ${step >= 2 ? "text-[#2C1810]" : "text-[#6B5344]"}`}>
+          Travelers
+        </span>
+        <span className={`text-sm ${step >= 3 ? "text-[#2C1810]" : "text-[#6B5344]"}`}>
+          Destinations
+        </span>
+      </div>
+
+      {/* Form */}
+      <div className="bg-white rounded-2xl shadow-lg p-8">
+        <AnimatePresence mode="wait">
+          {/* Step 1: Basic Info */}
+          {step === 1 && (
+            <motion.div
+              key="step1"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              className="space-y-6"
+            >
+              <div className="flex items-center gap-3 mb-6">
+                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#E07B39]/20 to-[#C9A227]/20 flex items-center justify-center">
+                  <Heart className="w-5 h-5 text-[#E07B39]" />
+                </div>
+                <h2 className="font-serif text-xl text-[#2C1810]">Journey Details</h2>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-[#2C1810] mb-1">
+                  Journey Name *
+                </label>
+                <input
+                  type="text"
+                  value={journeyName}
+                  onChange={(e) => setJourneyName(e.target.value)}
+                  placeholder="e.g., Our Adventure 2025"
+                  className="w-full px-4 py-3 rounded-xl border border-[#E5DDD5] focus:border-[#C9A227] focus:ring-2 focus:ring-[#C9A227]/20 outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-[#2C1810] mb-1">
+                  Recipient Name *
+                </label>
+                <input
+                  type="text"
+                  value={recipientName}
+                  onChange={(e) => handleRecipientNameChange(e.target.value)}
+                  placeholder="Who is this journey for?"
+                  className="w-full px-4 py-3 rounded-xl border border-[#E5DDD5] focus:border-[#C9A227] focus:ring-2 focus:ring-[#C9A227]/20 outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-[#2C1810] mb-1">
+                  Recipient Email (optional)
+                </label>
+                <input
+                  type="email"
+                  value={recipientEmail}
+                  onChange={(e) => setRecipientEmail(e.target.value)}
+                  placeholder="For email notifications"
+                  className="w-full px-4 py-3 rounded-xl border border-[#E5DDD5] focus:border-[#C9A227] focus:ring-2 focus:ring-[#C9A227]/20 outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-[#2C1810] mb-1">
+                  URL Slug *
+                </label>
+                <div className="flex items-center gap-2">
+                  <span className="text-[#6B5344]">/j/</span>
+                  <input
+                    type="text"
+                    value={slug}
+                    onChange={(e) => setSlug(generateSlug(e.target.value))}
+                    placeholder="unique-slug"
+                    className="flex-1 px-4 py-3 rounded-xl border border-[#E5DDD5] focus:border-[#C9A227] focus:ring-2 focus:ring-[#C9A227]/20 outline-none"
+                  />
+                </div>
+                <p className="text-sm text-[#6B5344] mt-1">
+                  This will be the link: /j/{slug || "..."}
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-[#2C1810] mb-1">
+                  Access Code (optional)
+                </label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#6B5344]" />
+                  <input
+                    type="text"
+                    value={accessCode}
+                    onChange={(e) => setAccessCode(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                    placeholder="4-digit PIN"
+                    maxLength={4}
+                    className="w-full pl-10 pr-4 py-3 rounded-xl border border-[#E5DDD5] focus:border-[#C9A227] focus:ring-2 focus:ring-[#C9A227]/20 outline-none"
+                  />
+                </div>
+                <p className="text-sm text-[#6B5344] mt-1">
+                  Require a PIN to access the journey
+                </p>
+              </div>
+            </motion.div>
+          )}
+
+          {/* Step 2: Participants */}
+          {step === 2 && (
+            <motion.div
+              key="step2"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              className="space-y-6"
+            >
+              <div className="flex items-center gap-3 mb-6">
+                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#E07B39]/20 to-[#C9A227]/20 flex items-center justify-center">
+                  <Users className="w-5 h-5 text-[#E07B39]" />
+                </div>
+                <h2 className="font-serif text-xl text-[#2C1810]">Who's Traveling?</h2>
+              </div>
+
+              {participants.map((participant, index) => (
+                <div
+                  key={index}
+                  className="p-4 bg-[#FDF8F3] rounded-xl space-y-4"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium text-[#2C1810]">
+                      Traveler {index + 1}
+                    </span>
+                    {participants.length > 1 && (
+                      <button
+                        onClick={() => removeParticipant(index)}
+                        className="text-sm text-red-500 hover:text-red-600"
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm text-[#6B5344] mb-1">Name</label>
+                      <input
+                        type="text"
+                        value={participant.name}
+                        onChange={(e) => updateParticipant(index, "name", e.target.value)}
+                        placeholder="Name"
+                        className="w-full px-3 py-2 rounded-lg border border-[#E5DDD5] focus:border-[#C9A227] outline-none text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm text-[#6B5344] mb-1">Age</label>
+                      <input
+                        type="number"
+                        value={participant.age}
+                        onChange={(e) => updateParticipant(index, "age", e.target.value)}
+                        placeholder="Age"
+                        className="w-full px-3 py-2 rounded-lg border border-[#E5DDD5] focus:border-[#C9A227] outline-none text-sm"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm text-[#6B5344] mb-1">Role</label>
+                    <select
+                      value={participant.role}
+                      onChange={(e) => updateParticipant(index, "role", e.target.value)}
+                      className="w-full px-3 py-2 rounded-lg border border-[#E5DDD5] focus:border-[#C9A227] outline-none text-sm"
+                    >
+                      <option value="">Select role...</option>
+                      <option value="wife">Wife</option>
+                      <option value="husband">Husband</option>
+                      <option value="partner">Partner</option>
+                      <option value="daughter">Daughter</option>
+                      <option value="son">Son</option>
+                      <option value="friend">Friend</option>
+                      <option value="other">Other</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm text-[#6B5344] mb-1">Interests</label>
+                    <input
+                      type="text"
+                      value={participant.interests}
+                      onChange={(e) => updateParticipant(index, "interests", e.target.value)}
+                      placeholder="wine, food, art, animals (comma separated)"
+                      className="w-full px-3 py-2 rounded-lg border border-[#E5DDD5] focus:border-[#C9A227] outline-none text-sm"
+                    />
+                  </div>
+
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={participant.isRecipient}
+                      onChange={(e) => updateParticipant(index, "isRecipient", e.target.checked)}
+                      className="w-4 h-4 rounded border-[#E5DDD5] text-[#C9A227] focus:ring-[#C9A227]"
+                    />
+                    <span className="text-sm text-[#6B5344]">This is the main recipient</span>
+                  </label>
+                </div>
+              ))}
+
+              <button
+                onClick={addParticipant}
+                className="w-full py-3 border-2 border-dashed border-[#E5DDD5] rounded-xl text-[#6B5344] hover:border-[#C9A227] hover:text-[#C9A227] transition-colors"
+              >
+                + Add Another Traveler
+              </button>
+            </motion.div>
+          )}
+
+          {/* Step 3: Destinations */}
+          {step === 3 && (
+            <motion.div
+              key="step3"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              className="space-y-6"
+            >
+              <div className="flex items-center gap-3 mb-6">
+                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#E07B39]/20 to-[#C9A227]/20 flex items-center justify-center">
+                  <MapPin className="w-5 h-5 text-[#E07B39]" />
+                </div>
+                <h2 className="font-serif text-xl text-[#2C1810]">Where Are You Going?</h2>
+              </div>
+
+              {destinations.map((destination, index) => (
+                <div
+                  key={index}
+                  className="p-4 bg-[#FDF8F3] rounded-xl space-y-4"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium text-[#2C1810]">
+                      Destination {index + 1}
+                    </span>
+                    {destinations.length > 1 && (
+                      <button
+                        onClick={() => removeDestination(index)}
+                        className="text-sm text-red-500 hover:text-red-600"
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm text-[#6B5344] mb-1">City/Place</label>
+                      <input
+                        type="text"
+                        value={destination.name}
+                        onChange={(e) => updateDestination(index, "name", e.target.value)}
+                        placeholder="e.g., Cape Town"
+                        className="w-full px-3 py-2 rounded-lg border border-[#E5DDD5] focus:border-[#C9A227] outline-none text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm text-[#6B5344] mb-1">Country</label>
+                      <input
+                        type="text"
+                        value={destination.country}
+                        onChange={(e) => updateDestination(index, "country", e.target.value)}
+                        placeholder="e.g., South Africa"
+                        className="w-full px-3 py-2 rounded-lg border border-[#E5DDD5] focus:border-[#C9A227] outline-none text-sm"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm text-[#6B5344] mb-1">Start Date</label>
+                      <input
+                        type="date"
+                        value={destination.startDate}
+                        onChange={(e) => updateDestination(index, "startDate", e.target.value)}
+                        className="w-full px-3 py-2 rounded-lg border border-[#E5DDD5] focus:border-[#C9A227] outline-none text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm text-[#6B5344] mb-1">End Date</label>
+                      <input
+                        type="date"
+                        value={destination.endDate}
+                        onChange={(e) => updateDestination(index, "endDate", e.target.value)}
+                        className="w-full px-3 py-2 rounded-lg border border-[#E5DDD5] focus:border-[#C9A227] outline-none text-sm"
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))}
+
+              <button
+                onClick={addDestination}
+                className="w-full py-3 border-2 border-dashed border-[#E5DDD5] rounded-xl text-[#6B5344] hover:border-[#C9A227] hover:text-[#C9A227] transition-colors"
+              >
+                + Add Another Destination
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Error */}
+        {error && (
+          <p className="mt-4 text-sm text-red-500">{error}</p>
+        )}
+
+        {/* Navigation */}
+        <div className="flex items-center justify-between mt-8 pt-6 border-t border-[#E5DDD5]">
+          {step > 1 ? (
+            <button
+              onClick={() => setStep((step - 1) as Step)}
+              className="flex items-center gap-2 px-4 py-2 text-[#6B5344] hover:text-[#2C1810]"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              Back
+            </button>
+          ) : (
+            <div />
+          )}
+
+          {step < 3 ? (
+            <button
+              onClick={() => setStep((step + 1) as Step)}
+              disabled={!canProceed()}
+              className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-[#E07B39] to-[#C9A227] text-white rounded-full font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Continue
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          ) : (
+            <button
+              onClick={handleSubmit}
+              disabled={!canProceed() || isLoading}
+              className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-[#E07B39] to-[#C9A227] text-white rounded-full font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isLoading ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Creating...
+                </>
+              ) : (
+                <>
+                  <Check className="w-4 h-4" />
+                  Create Journey
+                </>
+              )}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

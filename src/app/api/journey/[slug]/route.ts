@@ -35,7 +35,7 @@ export async function GET(
 
   // Sort destinations by order_index
   const sortedDestinations = (journey.destinations || []).sort(
-    (a, b) => a.order_index - b.order_index
+    (a, b) => (a.order_index ?? 0) - (b.order_index ?? 0)
   );
 
   // Get chapters for each destination with card counts

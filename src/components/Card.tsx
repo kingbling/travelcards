@@ -31,6 +31,7 @@ export function Card({ card, isFlipped = false, onClick }: CardProps) {
     >
       <motion.div
         className="relative w-full h-[480px] preserve-3d"
+        initial={{ rotateY: isFlipped ? 0 : 180 }}
         animate={{ rotateY: isFlipped ? 0 : 180 }}
         transition={{ duration: 0.8, ease: [0.4, 0, 0.2, 1] }}
         style={{ transformStyle: "preserve-3d" }}

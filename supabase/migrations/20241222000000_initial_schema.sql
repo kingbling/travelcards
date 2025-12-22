@@ -1,8 +1,7 @@
 -- TravelCards Database Schema
 -- A personalized travel experience card game for family trips
 
--- Enable UUID extension
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+-- Note: Using gen_random_uuid() which is built into PostgreSQL 13+
 
 -- ============================================
 -- CORE TABLES
@@ -10,7 +9,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- The journey structure (the "campaign")
 CREATE TABLE journeys (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   curator_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,  -- Who created this journey
   name TEXT NOT NULL,
 
@@ -32,7 +31,7 @@ CREATE TABLE journeys (
 
 -- People on the trip (for AI card generation)
 CREATE TABLE participants (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   journey_id UUID REFERENCES journeys(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
   age INT,
@@ -45,7 +44,7 @@ CREATE TABLE participants (
 
 -- Destinations within a journey (Cape Town, Bali, Japan)
 CREATE TABLE destinations (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   journey_id UUID REFERENCES journeys(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
   country TEXT,
@@ -58,7 +57,7 @@ CREATE TABLE destinations (
 
 -- Chapters within a destination (narrative structure)
 CREATE TABLE chapters (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   destination_id UUID REFERENCES destinations(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
   description TEXT,
@@ -71,7 +70,7 @@ CREATE TABLE chapters (
 
 -- Experience cards
 CREATE TABLE cards (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   chapter_id UUID REFERENCES chapters(id) ON DELETE SET NULL,
   destination_id UUID REFERENCES destinations(id) ON DELETE SET NULL,
 
@@ -110,14 +109,14 @@ CREATE TABLE cards (
 
 -- Track reveal history
 CREATE TABLE reveals (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   card_id UUID REFERENCES cards(id) ON DELETE CASCADE,
   revealed_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
 -- Love letters / personal messages
 CREATE TABLE love_letters (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   journey_id UUID REFERENCES journeys(id) ON DELETE CASCADE,
   title TEXT NOT NULL,
   content TEXT NOT NULL,
@@ -130,7 +129,7 @@ CREATE TABLE love_letters (
 
 -- Email notification preferences
 CREATE TABLE email_preferences (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   journey_id UUID REFERENCES journeys(id) ON DELETE CASCADE,
   email TEXT NOT NULL,
 
@@ -151,7 +150,7 @@ CREATE TABLE email_preferences (
 
 -- Memories (photos + notes after completing an experience)
 CREATE TABLE memories (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   card_id UUID REFERENCES cards(id) ON DELETE CASCADE,
 
   -- Content
@@ -165,7 +164,7 @@ CREATE TABLE memories (
 
 -- Memory photos (stored in Supabase Storage)
 CREATE TABLE memory_photos (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   memory_id UUID REFERENCES memories(id) ON DELETE CASCADE,
   storage_path TEXT NOT NULL,
   caption TEXT,

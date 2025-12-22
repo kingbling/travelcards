@@ -39,7 +39,7 @@ export async function POST(
   }
 
   // Get chapter with cooldown info
-  let chapter: { destination_id: string | null; reveal_cooldown_hours: number } | null = null;
+  let chapter: { destination_id: string | null; reveal_cooldown_hours: number | null } | null = null;
 
   if (card.chapter_id) {
     const { data: chapterData } = await supabase
@@ -69,7 +69,7 @@ export async function POST(
   }
 
   // Check cooldown - get the last revealed card in this chapter
-  if (chapter?.reveal_cooldown_hours) {
+  if (chapter?.reveal_cooldown_hours && card.chapter_id) {
     const { data: lastReveal } = await supabase
       .from("cards")
       .select("revealed_at")
