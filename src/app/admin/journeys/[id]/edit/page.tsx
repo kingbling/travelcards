@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef, useCallback } from "react";
-import { useRouter, useParams } from "next/navigation";
+import { useRouter, useParams, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { createClient } from "@/lib/supabase/client";
 import {
@@ -64,7 +64,9 @@ interface JourneyData {
 export default function EditJourneyPage() {
   const router = useRouter();
   const params = useParams();
+  const searchParams = useSearchParams();
   const journeyId = params.id as string;
+  const urlStep = searchParams.get("step");
   const supabase = createClient();
 
   const [isLoadingData, setIsLoadingData] = useState(true);
@@ -274,6 +276,12 @@ export default function EditJourneyPage() {
               endDate: d.end_date || "",
             }))
           );
+        }
+
+        // Set step: URL param takes priority, otherwise auto-detect based on data
+        if (urlStep && ["1", "2", "3"].includes(urlStep)) {
+          setStep(parseInt(urlStep) as Step);
+        } else if (destinationsData && destinationsData.length > 0) {
           // If destinations exist, start at step 3 (they can still edit)
           setStep(3);
         } else if (participantsData && participantsData.length > 0) {
@@ -293,7 +301,7 @@ export default function EditJourneyPage() {
     };
 
     loadJourneyData();
-  }, [journeyId, supabase]);
+  }, [journeyId, supabase, urlStep]);
 
   const generateSlug = (name: string) => {
     return name

@@ -17,12 +17,37 @@ export default function PinEntryPage() {
   const [journeyName, setJourneyName] = useState<string | null>(null);
   const [recipientName, setRecipientName] = useState<string | null>(null);
 
-  // Check if already authenticated via session storage
+  // Check if already authenticated or if user is curator
   useEffect(() => {
-    const authenticated = sessionStorage.getItem(`journey-${slug}-authenticated`);
-    if (authenticated === "true") {
-      router.replace(`/j/${slug}/intro`);
-    }
+    const checkAuth = async () => {
+      // Check session storage first
+      const authenticated = sessionStorage.getItem(`journey-${slug}-authenticated`);
+      if (authenticated === "true") {
+        router.replace(`/j/${slug}/intro`);
+        return;
+      }
+
+      // Try curator preview (auto-bypass for journey owner)
+      try {
+        const res = await fetch(`/api/journey/${slug}/verify`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ curatorPreview: true }),
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          if (data.curatorAccess) {
+            sessionStorage.setItem(`journey-${slug}-authenticated`, "true");
+            router.replace(`/j/${slug}/intro`);
+          }
+        }
+      } catch {
+        // Not a curator, continue with PIN entry
+      }
+    };
+
+    checkAuth();
   }, [slug, router]);
 
   // Fetch journey info

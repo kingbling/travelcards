@@ -1,0 +1,252 @@
+import type { CardCategory, TargetProfile, Rarity } from "@/types/database";
+
+export interface Traveler {
+  name: string;
+  age: number | null;
+  role: string | null;
+  interests: string[];
+  isRecipient: boolean;
+}
+
+export interface DestinationContext {
+  id: string;
+  name: string;
+  country: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  type: "stay" | "roadtrip";
+  waypoints?: string[];
+}
+
+export interface GenerationContext {
+  journeyName: string;
+  recipientName: string | null;
+  travelers: Traveler[];
+  destination: DestinationContext;
+  existingCards: string[];
+  categoryStats: Record<string, number>;
+}
+
+export interface GeneratedCard {
+  name: string;
+  description: string;
+  category: CardCategory;
+  targetProfile: TargetProfile;
+  rarity: Rarity;
+  estimatedCost: string | null;
+  durationHours: number | null;
+  bookingMethod: string | null;
+}
+
+// Get season from date and hemisphere
+function getSeason(dateStr: string | null, country: string | null): string {
+  if (!dateStr) return "Unknown season";
+
+  const date = new Date(dateStr);
+  const month = date.getMonth();
+
+  // Southern hemisphere countries
+  const southernCountries = [
+    "South Africa", "Australia", "New Zealand", "Argentina", "Chile",
+    "Brazil", "Peru", "Bolivia", "Uruguay", "Paraguay"
+  ];
+
+  const isSouthern = country && southernCountries.some(c =>
+    country.toLowerCase().includes(c.toLowerCase())
+  );
+
+  // Month to season mapping
+  if (month >= 2 && month <= 4) return isSouthern ? "Autumn" : "Spring";
+  if (month >= 5 && month <= 7) return isSouthern ? "Winter" : "Summer";
+  if (month >= 8 && month <= 10) return isSouthern ? "Spring" : "Autumn";
+  return isSouthern ? "Summer" : "Winter";
+}
+
+// Format date range nicely
+function formatDateRange(start: string | null, end: string | null): string {
+  if (!start) return "Dates not set";
+
+  const startDate = new Date(start);
+  const endDate = end ? new Date(end) : null;
+
+  const options: Intl.DateTimeFormatOptions = { month: "short", day: "numeric", year: "numeric" };
+  const startStr = startDate.toLocaleDateString("en-US", options);
+
+  if (!endDate) return startStr;
+
+  const endStr = endDate.toLocaleDateString("en-US", options);
+  return `${startStr} - ${endStr}`;
+}
+
+// Build the user prompt for AI
+export function buildPrompt(context: GenerationContext, cardCount: number): string {
+  const { destination, travelers, existingCards, categoryStats } = context;
+
+  const season = getSeason(destination.startDate, destination.country);
+  const dateRange = formatDateRange(destination.startDate, destination.endDate);
+
+  // Build travelers section
+  const travelerLines = travelers.map(t => {
+    const interestStr = t.interests.length > 0 ? t.interests.join(", ") : "no specific interests listed";
+    const recipientMark = t.isRecipient ? " (Gift Recipient)" : "";
+    const ageStr = t.age ? `, ${t.age}` : "";
+    const roleStr = t.role ? `, ${t.role}` : "";
+    return `- ${t.name}${ageStr}${roleStr}${recipientMark}: ${interestStr}`;
+  }).join("\n");
+
+  // Build existing cards section
+  const existingSection = existingCards.length > 0
+    ? `\nEXISTING CARDS (do NOT duplicate these):\n${existingCards.map(c => `- ${c}`).join("\n")}`
+    : "";
+
+  // Build category stats section
+  const categoryLines = Object.entries(categoryStats)
+    .filter(([, count]) => count > 0)
+    .map(([cat, count]) => `${cat}: ${count}`)
+    .join(", ");
+  const categorySection = categoryLines
+    ? `\nCurrent card distribution: ${categoryLines}. Aim for variety in categories not yet covered.`
+    : "";
+
+  // Road trip specific section
+  const routeSection = destination.type === "roadtrip" && destination.waypoints?.length
+    ? `\nROUTE STOPS: ${destination.waypoints.join(" → ")}\nInclude experiences for stops along the way.`
+    : "";
+
+  return `Create ${cardCount} UNIQUE experience cards for this trip:
+
+DESTINATION: ${destination.name}${destination.country ? `, ${destination.country}` : ""}
+DATES: ${dateRange}
+SEASON: ${season}
+${routeSection}
+
+TRAVELERS:
+${travelerLines}
+
+${existingSection}
+${categorySection}
+
+REQUIREMENTS:
+1. Each experience must be specific to ${destination.name} - real venues, actual activities
+2. Match experiences to traveler interests - especially the gift recipient
+3. Include a mix of:
+   - Family-friendly activities everyone can enjoy
+   - Age-appropriate experiences (kids activities for children)
+   - Couple experiences for the adults
+4. Vary the rarity: mostly common/uncommon, 1-2 rare, maybe 1 legendary if truly exceptional
+5. Be specific about costs, durations, and how to book
+
+Return a JSON array with exactly this structure for each card:
+[
+  {
+    "name": "Experience title (max 60 chars)",
+    "description": "2-3 vivid sentences that make them excited to do this",
+    "category": "food|wine|animals|art|nature|culture|adventure|family|spa|music",
+    "targetProfile": "solo|couple|family|kids",
+    "rarity": "common|uncommon|rare|legendary",
+    "estimatedCost": "$ amount per person or 'Free'",
+    "durationHours": number,
+    "bookingMethod": "How to book or access this experience"
+  }
+]
+
+Return ONLY the JSON array, no other text.`;
+}
+
+// System prompt for the AI
+export const SYSTEM_PROMPT = `You are a luxury travel experience curator with deep knowledge of destinations worldwide. Your role is to create unique, memorable experience cards for personalized travel journeys.
+
+Your expertise includes:
+- Local hidden gems and insider knowledge
+- Family-friendly activities for all ages
+- Romantic experiences for couples
+- Adventure activities and nature experiences
+- Culinary and wine experiences
+- Cultural and artistic venues
+- Practical booking information and costs
+
+Always be specific and authentic:
+- Use real venue names and locations
+- Provide accurate cost estimates in local currency
+- Give realistic duration estimates
+- Include practical booking tips
+
+Match experiences to traveler interests while ensuring variety and balance.`;
+
+// Parse AI response into structured cards
+export function parseGeneratedCards(response: string): GeneratedCard[] {
+  try {
+    // Try to extract JSON from the response
+    const jsonMatch = response.match(/\[[\s\S]*\]/);
+    if (!jsonMatch) {
+      console.error("No JSON array found in response");
+      return [];
+    }
+
+    const parsed = JSON.parse(jsonMatch[0]);
+
+    if (!Array.isArray(parsed)) {
+      console.error("Parsed response is not an array");
+      return [];
+    }
+
+    // Validate and normalize each card
+    return parsed.map((card: Record<string, unknown>) => ({
+      name: String(card.name || "").slice(0, 60),
+      description: String(card.description || ""),
+      category: validateCategory(String(card.category || "culture")),
+      targetProfile: validateTargetProfile(String(card.targetProfile || "family")),
+      rarity: validateRarity(String(card.rarity || "common")),
+      estimatedCost: card.estimatedCost ? String(card.estimatedCost) : null,
+      durationHours: typeof card.durationHours === "number" ? card.durationHours : null,
+      bookingMethod: card.bookingMethod ? String(card.bookingMethod) : null,
+    }));
+  } catch (error) {
+    console.error("Failed to parse AI response:", error);
+    return [];
+  }
+}
+
+function validateCategory(cat: string): CardCategory {
+  const valid: CardCategory[] = ["food", "wine", "animals", "art", "nature", "culture", "adventure", "family", "spa", "music"];
+  return valid.includes(cat as CardCategory) ? (cat as CardCategory) : "culture";
+}
+
+function validateTargetProfile(profile: string): TargetProfile {
+  const valid: TargetProfile[] = ["solo", "couple", "family", "kids"];
+  return valid.includes(profile as TargetProfile) ? (profile as TargetProfile) : "family";
+}
+
+function validateRarity(rarity: string): Rarity {
+  const valid: Rarity[] = ["common", "uncommon", "rare", "legendary"];
+  return valid.includes(rarity as Rarity) ? (rarity as Rarity) : "common";
+}
+
+// Check for duplicate cards
+export function isDuplicateCard(newCardName: string, existingNames: string[]): boolean {
+  const newLower = newCardName.toLowerCase().trim();
+
+  return existingNames.some(existing => {
+    const existingLower = existing.toLowerCase().trim();
+    // Check for exact match or significant overlap
+    return newLower === existingLower ||
+      newLower.includes(existingLower) ||
+      existingLower.includes(newLower) ||
+      // Similarity check - if 70%+ of words match
+      wordSimilarity(newLower, existingLower) > 0.7;
+  });
+}
+
+function wordSimilarity(a: string, b: string): number {
+  const wordsA = new Set(a.split(/\s+/).filter(w => w.length > 2));
+  const wordsB = new Set(b.split(/\s+/).filter(w => w.length > 2));
+
+  if (wordsA.size === 0 || wordsB.size === 0) return 0;
+
+  let matches = 0;
+  wordsA.forEach(word => {
+    if (wordsB.has(word)) matches++;
+  });
+
+  return matches / Math.max(wordsA.size, wordsB.size);
+}

@@ -10,10 +10,9 @@ import {
   Settings,
   Plus,
   Calendar,
-  ExternalLink,
   Check,
-  X,
 } from "lucide-react";
+import { PublishButton, CopyLinkButton } from "@/components/admin/JourneyActions";
 import type { Card, Participant, Destination, Chapter, LoveLetter } from "@/types/database";
 
 interface Props {
@@ -25,6 +24,7 @@ interface JourneyWithRelations {
   name: string;
   recipient_name: string | null;
   unique_slug: string | null;
+  access_code: string | null;
   is_published: boolean;
   participants: Participant[] | null;
   destinations: (Destination & { chapters: Chapter[] | null; cards: Card[] | null })[] | null;
@@ -112,25 +112,7 @@ export default async function JourneyManagePage({ params }: Props) {
             <Eye className="w-4 h-4" />
             Preview
           </Link>
-          <button
-            className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium ${
-              journey.is_published
-                ? "bg-amber-100 text-amber-700 hover:bg-amber-200"
-                : "bg-emerald-500 text-white hover:bg-emerald-600"
-            } transition-colors`}
-          >
-            {journey.is_published ? (
-              <>
-                <X className="w-4 h-4" />
-                Unpublish
-              </>
-            ) : (
-              <>
-                <Check className="w-4 h-4" />
-                Publish
-              </>
-            )}
-          </button>
+          <PublishButton journeyId={journey.id} isPublished={journey.is_published} />
         </div>
       </div>
 
@@ -235,20 +217,20 @@ export default async function JourneyManagePage({ params }: Props) {
           </p>
         </Link>
 
-        {/* Love Letters */}
+        {/* Personal Notes */}
         <Link
-          href={`/admin/journeys/${id}/letters`}
+          href={`/admin/journeys/${id}/notes`}
           className="bg-white rounded-2xl p-6 shadow-sm hover:shadow-lg transition-shadow border border-[#E5DDD5]"
         >
-          <div className="w-8 h-8 mb-4 rounded-full bg-pink-500/10 flex items-center justify-center">
-            <span className="text-lg">💌</span>
+          <div className="w-8 h-8 mb-4 rounded-full bg-purple-500/10 flex items-center justify-center">
+            <span className="text-lg">📝</span>
           </div>
-          <h3 className="font-serif text-xl text-[#2C1810] mb-2">Love Letters</h3>
+          <h3 className="font-serif text-xl text-[#2C1810] mb-2">Personal Notes</h3>
           <p className="text-[#6B5344] text-sm">
-            Write personal messages
+            Add personal messages
           </p>
           <p className="text-sm mt-2 text-[#6B5344]">
-            {journey.love_letters?.length ?? 0} letters written
+            {journey.love_letters?.length ?? 0} notes added
           </p>
         </Link>
       </div>
@@ -257,10 +239,13 @@ export default async function JourneyManagePage({ params }: Props) {
       <div className="bg-white rounded-2xl shadow-sm overflow-hidden mb-8">
         <div className="p-6 border-b border-[#E5DDD5] flex items-center justify-between">
           <h2 className="font-serif text-xl text-[#2C1810]">Destinations</h2>
-          <button className="text-sm text-[#E07B39] hover:underline flex items-center gap-1">
+          <Link
+            href={`/admin/journeys/${journey.id}/edit?step=3`}
+            className="text-sm text-[#E07B39] hover:underline flex items-center gap-1"
+          >
             <Plus className="w-4 h-4" />
             Add Destination
-          </button>
+          </Link>
         </div>
 
         {journey.destinations && journey.destinations.length > 0 ? (
@@ -290,9 +275,12 @@ export default async function JourneyManagePage({ params }: Props) {
                   <div className="text-sm text-[#6B5344]">
                     {dest.chapters?.length ?? 0} chapters
                   </div>
-                  <button className="text-sm text-[#E07B39] hover:underline">
+                  <Link
+                    href={`/admin/journeys/${journey.id}/edit?step=3`}
+                    className="text-sm text-[#E07B39] hover:underline"
+                  >
                     Edit
-                  </button>
+                  </Link>
                 </div>
               </div>
             ))}
@@ -300,9 +288,12 @@ export default async function JourneyManagePage({ params }: Props) {
         ) : (
           <div className="p-8 text-center text-[#6B5344]">
             No destinations added yet.{" "}
-            <button className="text-[#E07B39] hover:underline">
+            <Link
+              href={`/admin/journeys/${journey.id}/edit?step=3`}
+              className="text-[#E07B39] hover:underline"
+            >
               Add your first destination
-            </button>
+            </Link>
           </div>
         )}
       </div>
@@ -311,10 +302,13 @@ export default async function JourneyManagePage({ params }: Props) {
       <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
         <div className="p-6 border-b border-[#E5DDD5] flex items-center justify-between">
           <h2 className="font-serif text-xl text-[#2C1810]">Travelers</h2>
-          <button className="text-sm text-[#E07B39] hover:underline flex items-center gap-1">
+          <Link
+            href={`/admin/journeys/${journey.id}/edit?step=2`}
+            className="text-sm text-[#E07B39] hover:underline flex items-center gap-1"
+          >
             <Plus className="w-4 h-4" />
             Add Traveler
-          </button>
+          </Link>
         </div>
 
         {journey.participants && journey.participants.length > 0 ? (
@@ -359,9 +353,12 @@ export default async function JourneyManagePage({ params }: Props) {
                       )}
                     </div>
                   )}
-                  <button className="text-sm text-[#E07B39] hover:underline">
+                  <Link
+                    href={`/admin/journeys/${journey.id}/edit?step=2`}
+                    className="text-sm text-[#E07B39] hover:underline"
+                  >
                     Edit
-                  </button>
+                  </Link>
                 </div>
               </div>
             ))}
@@ -369,25 +366,33 @@ export default async function JourneyManagePage({ params }: Props) {
         ) : (
           <div className="p-8 text-center text-[#6B5344]">
             No travelers added yet.{" "}
-            <button className="text-[#E07B39] hover:underline">
+            <Link
+              href={`/admin/journeys/${journey.id}/edit?step=2`}
+              className="text-[#E07B39] hover:underline"
+            >
               Add travelers
-            </button>
+            </Link>
           </div>
         )}
       </div>
 
       {/* Journey Link */}
       <div className="mt-8 p-4 bg-[#FDF8F3] rounded-xl flex items-center justify-between">
-        <div>
-          <p className="text-sm text-[#6B5344]">Share this link with your recipient:</p>
-          <p className="font-mono text-[#2C1810]">
-            {typeof window !== "undefined" ? window.location.origin : ""}/j/{journey.unique_slug}
-          </p>
+        <div className="flex items-center gap-8">
+          <div>
+            <p className="text-sm text-[#6B5344]">Share this link with your recipient:</p>
+            <p className="font-mono text-[#2C1810]">
+              /j/{journey.unique_slug}
+            </p>
+          </div>
+          <div>
+            <p className="text-sm text-[#6B5344]">PIN Code:</p>
+            <p className="font-mono text-[#2C1810]">
+              {journey.access_code || "No PIN set"}
+            </p>
+          </div>
         </div>
-        <button className="flex items-center gap-2 px-4 py-2 bg-white rounded-lg text-sm font-medium text-[#6B5344] hover:bg-[#E5DDD5] transition-colors">
-          <ExternalLink className="w-4 h-4" />
-          Copy Link
-        </button>
+        <CopyLinkButton uniqueSlug={journey.unique_slug ?? ""} />
       </div>
     </div>
   );
