@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import { useRouter, useParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { createClient } from "@/lib/supabase/client";
 import {
@@ -23,6 +23,7 @@ import Link from "next/link";
 type Step = 1 | 2 | 3;
 
 interface Participant {
+  id?: string;
   name: string;
   age: string;
   role: string;
@@ -31,37 +32,45 @@ interface Participant {
 }
 
 interface Waypoint {
+  id?: string;
   name: string;
   description: string;
   dayNumber: string;
 }
 
 interface Destination {
+  id?: string;
   type: "stay" | "roadtrip";
-  // For stay type
   name: string;
   country: string;
-  // For roadtrip type
   startLocation: string;
   endLocation: string;
   transportMode: string;
   waypoints: Waypoint[];
-  // Common
   startDate: string;
   endDate: string;
 }
 
-export default function NewJourneyPage() {
+interface JourneyData {
+  id: string;
+  name: string;
+  recipient_name: string | null;
+  recipient_email: string | null;
+  unique_slug: string | null;
+  access_code: string | null;
+}
+
+export default function EditJourneyPage() {
   const router = useRouter();
+  const params = useParams();
+  const journeyId = params.id as string;
   const supabase = createClient();
 
+  const [isLoadingData, setIsLoadingData] = useState(true);
   const [step, setStep] = useState<Step>(1);
-  const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  // Track the journey ID after Step 1 creates it
-  const [journeyId, setJourneyId] = useState<string | null>(null);
 
   // Step 1: Basic Info
   const [journeyName, setJourneyName] = useState("");
@@ -89,6 +98,98 @@ export default function NewJourneyPage() {
       endDate: ""
     },
   ]);
+
+  // Load existing journey data
+  useEffect(() => {
+    const loadJourneyData = async () => {
+      setIsLoadingData(true);
+
+      try {
+        // Load journey
+        const { data: journey, error: journeyError } = await supabase
+          .from("journeys")
+          .select("*")
+          .eq("id", journeyId)
+          .single();
+
+        if (journeyError || !journey) {
+          setError("Journey not found");
+          return;
+        }
+
+        const j = journey as JourneyData;
+        setJourneyName(j.name || "");
+        setRecipientName(j.recipient_name || "");
+        setRecipientEmail(j.recipient_email || "");
+        setSlug(j.unique_slug || "");
+        setAccessCode(j.access_code || "");
+
+        // Load participants
+        const { data: participantsData } = await supabase
+          .from("participants")
+          .select("*")
+          .eq("journey_id", journeyId)
+          .order("order_index");
+
+        if (participantsData && participantsData.length > 0) {
+          setParticipants(
+            participantsData.map((p) => ({
+              id: p.id,
+              name: p.name || "",
+              age: p.age?.toString() || "",
+              role: p.role || "",
+              interests: Array.isArray(p.interests) ? p.interests.join(", ") : "",
+              isRecipient: p.is_recipient || false,
+            }))
+          );
+        }
+
+        // Load destinations with waypoints
+        const { data: destinationsData } = await supabase
+          .from("destinations")
+          .select(`
+            *,
+            waypoints(*)
+          `)
+          .eq("journey_id", journeyId)
+          .order("order_index");
+
+        if (destinationsData && destinationsData.length > 0) {
+          setDestinations(
+            destinationsData.map((d) => ({
+              id: d.id,
+              type: (d.destination_type as "stay" | "roadtrip") || "stay",
+              name: d.name || "",
+              country: d.country || "",
+              startLocation: d.start_location || "",
+              endLocation: d.end_location || "",
+              transportMode: d.transport_mode || "car",
+              waypoints: (d.waypoints || []).map((wp: { id: string; name: string | null; description: string | null; day_number: number | null }) => ({
+                id: wp.id,
+                name: wp.name || "",
+                description: wp.description || "",
+                dayNumber: wp.day_number?.toString() || "",
+              })),
+              startDate: d.start_date || "",
+              endDate: d.end_date || "",
+            }))
+          );
+          // If destinations exist, start at step 3 (they can still edit)
+          setStep(3);
+        } else if (participantsData && participantsData.length > 0) {
+          // If only participants exist, start at step 2
+          setStep(2);
+        }
+        // Otherwise start at step 1
+      } catch {
+        setError("Failed to load journey data");
+      } finally {
+        setIsLoadingData(false);
+      }
+    };
+
+    loadJourneyData();
+  }, [journeyId, supabase]);
 
   const generateSlug = (name: string) => {
     return name
@@ -170,34 +271,25 @@ export default function NewJourneyPage() {
     setDestinations(updated);
   };
 
-  // Step 1: Create journey draft in database
+  // Step 1: Update journey basic info
   const handleStep1Complete = async () => {
     setIsSaving(true);
     setError(null);
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Not authenticated");
-
-      // Create journey draft
-      const { data: journey, error: journeyError } = await supabase
+      const { error: updateError } = await supabase
         .from("journeys")
-        .insert({
-          curator_id: user.id,
+        .update({
           name: journeyName,
           recipient_name: recipientName,
           recipient_email: recipientEmail || null,
           unique_slug: slug,
           access_code: accessCode || null,
-          is_published: false,
         })
-        .select()
-        .single();
+        .eq("id", journeyId);
 
-      if (journeyError) throw journeyError;
-      if (!journey) throw new Error("Failed to create journey");
+      if (updateError) throw updateError;
 
-      setJourneyId(journey.id);
       setStep(2);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Failed to save journey";
@@ -207,18 +299,13 @@ export default function NewJourneyPage() {
     }
   };
 
-  // Step 2: Save participants to database
+  // Step 2: Save participants
   const handleStep2Complete = async () => {
-    if (!journeyId) {
-      setError("Journey not found. Please go back and try again.");
-      return;
-    }
-
     setIsSaving(true);
     setError(null);
 
     try {
-      // Delete existing participants (in case user went back and changed them)
+      // Delete existing participants
       await supabase
         .from("participants")
         .delete()
@@ -254,32 +341,25 @@ export default function NewJourneyPage() {
     }
   };
 
-  // Step 3: Save destinations and complete the wizard
+  // Step 3: Save destinations and complete
   const handleSubmit = async () => {
-    if (!journeyId) {
-      setError("Journey not found. Please go back and try again.");
-      return;
-    }
-
     setIsLoading(true);
     setError(null);
 
     try {
-      // Delete existing destinations (in case user went back and changed them)
+      // Delete existing destinations and waypoints
       const { data: existingDests } = await supabase
         .from("destinations")
         .select("id")
         .eq("journey_id", journeyId);
 
       if (existingDests && existingDests.length > 0) {
-        // Delete waypoints first (foreign key constraint)
         for (const dest of existingDests) {
           await supabase
             .from("waypoints")
             .delete()
             .eq("destination_id", dest.id);
         }
-        // Then delete destinations
         await supabase
           .from("destinations")
           .delete()
@@ -339,7 +419,7 @@ export default function NewJourneyPage() {
       // Redirect to journey management
       router.push(`/admin/journeys/${journeyId}`);
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Failed to create journey";
+      const message = err instanceof Error ? err.message : "Failed to save destinations";
       setError(message);
     } finally {
       setIsLoading(false);
@@ -363,6 +443,17 @@ export default function NewJourneyPage() {
     }
   };
 
+  if (isLoadingData) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-center">
+          <Loader2 className="w-8 h-8 animate-spin text-[#C9A227] mx-auto mb-4" />
+          <p className="text-[#6B5344]">Loading journey...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-2xl mx-auto">
       {/* Back link */}
@@ -376,8 +467,8 @@ export default function NewJourneyPage() {
 
       {/* Header */}
       <div className="text-center mb-8">
-        <h1 className="font-serif text-3xl text-[#2C1810] mb-2">Create New Journey</h1>
-        <p className="text-[#6B5344]">Set up a magical travel experience</p>
+        <h1 className="font-serif text-3xl text-[#2C1810] mb-2">Continue Journey Setup</h1>
+        <p className="text-[#6B5344]">Complete your journey configuration</p>
       </div>
 
       {/* Progress Steps */}
@@ -694,7 +785,7 @@ export default function NewJourneyPage() {
                         <div className={`font-medium text-sm ${destination.type === "roadtrip" ? "text-[#2C1810]" : "text-[#6B5344]"}`}>
                           Road Trip
                         </div>
-                        <div className="text-xs text-[#6B5344]">A → B with stops</div>
+                        <div className="text-xs text-[#6B5344]">A to B with stops</div>
                       </div>
                     </button>
                   </div>
@@ -758,11 +849,11 @@ export default function NewJourneyPage() {
                           onChange={(e) => updateDestination(index, "transportMode", e.target.value)}
                           className="w-full px-3 py-2 rounded-lg border border-[#E5DDD5] focus:border-[#C9A227] outline-none text-sm"
                         >
-                          <option value="car">🚗 By Car</option>
-                          <option value="train">🚂 By Train</option>
-                          <option value="bus">🚌 By Bus</option>
-                          <option value="boat">⛵ By Boat</option>
-                          <option value="plane">✈️ By Plane</option>
+                          <option value="car">By Car</option>
+                          <option value="train">By Train</option>
+                          <option value="bus">By Bus</option>
+                          <option value="boat">By Boat</option>
+                          <option value="plane">By Plane</option>
                           <option value="other">Other</option>
                         </select>
                       </div>
