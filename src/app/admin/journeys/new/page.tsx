@@ -19,6 +19,7 @@ import {
   X,
 } from "lucide-react";
 import Link from "next/link";
+import { CountrySelect, CityAutocomplete } from "@/components/admin/Autocomplete";
 
 type Step = 1 | 2 | 3;
 
@@ -703,23 +704,20 @@ export default function NewJourneyPage() {
                   {destination.type === "stay" && (
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-sm text-[#6B5344] mb-1">City/Place</label>
-                        <input
-                          type="text"
-                          value={destination.name}
-                          onChange={(e) => updateDestination(index, "name", e.target.value)}
-                          placeholder="e.g., Cape Town"
-                          className="w-full px-3 py-2 rounded-lg border border-[#E5DDD5] focus:border-[#C9A227] outline-none text-sm"
+                        <label className="block text-sm text-[#6B5344] mb-1">Country</label>
+                        <CountrySelect
+                          value={destination.country}
+                          onChange={(value) => updateDestination(index, "country", value)}
+                          placeholder="Select country..."
                         />
                       </div>
                       <div>
-                        <label className="block text-sm text-[#6B5344] mb-1">Country</label>
-                        <input
-                          type="text"
-                          value={destination.country}
-                          onChange={(e) => updateDestination(index, "country", e.target.value)}
-                          placeholder="e.g., South Africa"
-                          className="w-full px-3 py-2 rounded-lg border border-[#E5DDD5] focus:border-[#C9A227] outline-none text-sm"
+                        <label className="block text-sm text-[#6B5344] mb-1">City/Place</label>
+                        <CityAutocomplete
+                          value={destination.name}
+                          onChange={(value) => updateDestination(index, "name", value)}
+                          country={destination.country}
+                          placeholder="Search city..."
                         />
                       </div>
                     </div>
@@ -731,22 +729,18 @@ export default function NewJourneyPage() {
                       <div className="grid grid-cols-2 gap-4">
                         <div>
                           <label className="block text-sm text-[#6B5344] mb-1">From</label>
-                          <input
-                            type="text"
+                          <CityAutocomplete
                             value={destination.startLocation}
-                            onChange={(e) => updateDestination(index, "startLocation", e.target.value)}
+                            onChange={(value) => updateDestination(index, "startLocation", value)}
                             placeholder="Starting point"
-                            className="w-full px-3 py-2 rounded-lg border border-[#E5DDD5] focus:border-[#C9A227] outline-none text-sm"
                           />
                         </div>
                         <div>
                           <label className="block text-sm text-[#6B5344] mb-1">To</label>
-                          <input
-                            type="text"
+                          <CityAutocomplete
                             value={destination.endLocation}
-                            onChange={(e) => updateDestination(index, "endLocation", e.target.value)}
+                            onChange={(value) => updateDestination(index, "endLocation", value)}
                             placeholder="Destination"
-                            className="w-full px-3 py-2 rounded-lg border border-[#E5DDD5] focus:border-[#C9A227] outline-none text-sm"
                           />
                         </div>
                       </div>

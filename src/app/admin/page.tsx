@@ -2,6 +2,9 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { Plus, MapPin, Eye, Settings, Sparkles, AlertCircle } from "lucide-react";
 
+// Prevent caching - always fetch fresh data
+export const dynamic = "force-dynamic";
+
 export default async function AdminDashboard() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -33,6 +36,14 @@ export default async function AdminDashboard() {
 
   return (
     <div>
+      {/* Error display */}
+      {error && (
+        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl text-red-700">
+          <p className="font-medium">Error loading journeys</p>
+          <p className="text-sm mt-1">{error.message}</p>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between mb-8">
         <div>
