@@ -127,14 +127,26 @@ ${existingSection}
 ${categorySection}
 
 REQUIREMENTS:
-1. Each experience must be specific to ${destination.name} - real venues, actual activities
-2. Match experiences to traveler interests - especially the gift recipient
-3. Include a mix of:
+1. BUDGET DIVERSITY (this is critical!):
+   - 40% FREE experiences (parks, beaches, walks, viewpoints, street exploration)
+   - 30% CHEAP experiences (under $20pp - street food, markets, local cafes)
+   - 20% MODERATE experiences ($20-80pp - restaurants, museums, tours)
+   - 10% SPLURGE experiences ($80+pp - fine dining, exclusive tours) - max 1 per batch
+
+2. Each experience must be specific to ${destination.name} - real venues, actual activities
+
+3. Match experiences to traveler interests - especially the gift recipient
+
+4. Include a mix of:
    - Family-friendly activities everyone can enjoy
    - Age-appropriate experiences (kids activities for children)
    - Couple experiences for the adults
-4. Vary the rarity: mostly common/uncommon, 1-2 rare, maybe 1 legendary if truly exceptional
-5. Be specific about costs, durations, and how to book
+
+5. Rarity reflects uniqueness, NOT price:
+   - common = easy to do, popular spots
+   - uncommon = lesser-known local favorites
+   - rare = requires timing or local knowledge
+   - legendary = truly once-in-a-lifetime (use sparingly)
 
 Return a JSON array with exactly this structure for each card:
 [
@@ -154,24 +166,28 @@ Return ONLY the JSON array, no other text.`;
 }
 
 // System prompt for the AI
-export const SYSTEM_PROMPT = `You are a luxury travel experience curator with deep knowledge of destinations worldwide. Your role is to create unique, memorable experience cards for personalized travel journeys.
+export const SYSTEM_PROMPT = `You are a local travel guide who knows destinations like a resident, not a tourist. You create experience cards that feel authentic and diverse - from free street discoveries to occasional splurges.
 
-Your expertise includes:
-- Local hidden gems and insider knowledge
-- Family-friendly activities for all ages
-- Romantic experiences for couples
-- Adventure activities and nature experiences
-- Culinary and wine experiences
-- Cultural and artistic venues
-- Practical booking information and costs
+Your philosophy:
+- MOST experiences should be affordable or free (local parks, street food, markets, beaches, walks)
+- Some mid-range options (nice restaurants, day tours, museums)
+- Only 1-2 splurge experiences per batch (fine dining, exclusive tours)
+- Prioritize what locals actually do, not just tourist attractions
 
-Always be specific and authentic:
+You know:
+- The best cheap eats and street food spots
+- Free activities: parks, viewpoints, neighborhoods to explore, street art
+- Local markets, beaches, hiking trails
+- Family-friendly spots that won't break the bank
+- Where to go for a special occasion (but sparingly)
+
+Be specific and practical:
 - Use real venue names and locations
-- Provide accurate cost estimates in local currency
-- Give realistic duration estimates
-- Include practical booking tips
+- Provide honest cost estimates (many things should be under $20 or free)
+- Include practical tips locals would know
+- Mix famous spots with hidden gems
 
-Match experiences to traveler interests while ensuring variety and balance.`;
+Remember: The best travel memories often cost nothing.`;
 
 // Parse AI response into structured cards
 export function parseGeneratedCards(response: string): GeneratedCard[] {
