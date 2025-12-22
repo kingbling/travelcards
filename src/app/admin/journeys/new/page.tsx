@@ -13,6 +13,10 @@ import {
   MapPin,
   Users,
   Lock,
+  Car,
+  Home,
+  Plus,
+  X,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -26,9 +30,23 @@ interface Participant {
   isRecipient: boolean;
 }
 
+interface Waypoint {
+  name: string;
+  description: string;
+  dayNumber: string;
+}
+
 interface Destination {
+  type: "stay" | "roadtrip";
+  // For stay type
   name: string;
   country: string;
+  // For roadtrip type
+  startLocation: string;
+  endLocation: string;
+  transportMode: string;
+  waypoints: Waypoint[];
+  // Common
   startDate: string;
   endDate: string;
 }
@@ -55,7 +73,17 @@ export default function NewJourneyPage() {
 
   // Step 3: Destinations
   const [destinations, setDestinations] = useState<Destination[]>([
-    { name: "", country: "", startDate: "", endDate: "" },
+    {
+      type: "stay",
+      name: "",
+      country: "",
+      startLocation: "",
+      endLocation: "",
+      transportMode: "car",
+      waypoints: [],
+      startDate: "",
+      endDate: ""
+    },
   ]);
 
   const generateSlug = (name: string) => {
@@ -94,7 +122,17 @@ export default function NewJourneyPage() {
   const addDestination = () => {
     setDestinations([
       ...destinations,
-      { name: "", country: "", startDate: "", endDate: "" },
+      {
+        type: "stay",
+        name: "",
+        country: "",
+        startLocation: "",
+        endLocation: "",
+        transportMode: "car",
+        waypoints: [],
+        startDate: "",
+        endDate: ""
+      },
     ]);
   };
 
@@ -104,9 +142,27 @@ export default function NewJourneyPage() {
     }
   };
 
-  const updateDestination = (index: number, field: keyof Destination, value: string) => {
+  const updateDestination = (index: number, field: keyof Destination, value: string | Waypoint[]) => {
     const updated = [...destinations];
     updated[index] = { ...updated[index], [field]: value };
+    setDestinations(updated);
+  };
+
+  const addWaypoint = (destIndex: number) => {
+    const updated = [...destinations];
+    updated[destIndex].waypoints.push({ name: "", description: "", dayNumber: "" });
+    setDestinations(updated);
+  };
+
+  const removeWaypoint = (destIndex: number, wpIndex: number) => {
+    const updated = [...destinations];
+    updated[destIndex].waypoints = updated[destIndex].waypoints.filter((_, i) => i !== wpIndex);
+    setDestinations(updated);
+  };
+
+  const updateWaypoint = (destIndex: number, wpIndex: number, field: keyof Waypoint, value: string) => {
+    const updated = [...destinations];
+    updated[destIndex].waypoints[wpIndex] = { ...updated[destIndex].waypoints[wpIndex], [field]: value };
     setDestinations(updated);
   };
 
@@ -158,23 +214,53 @@ export default function NewJourneyPage() {
       }
 
       // Create destinations
-      const destinationData = destinations
-        .filter((d) => d.name.trim())
-        .map((d, index) => ({
+      const validDestinations = destinations.filter((d) =>
+        d.type === "stay" ? d.name.trim() : d.startLocation.trim() && d.endLocation.trim()
+      );
+
+      for (let i = 0; i < validDestinations.length; i++) {
+        const d = validDestinations[i];
+        const destData = {
           journey_id: journey.id,
-          name: d.name,
+          destination_type: d.type,
+          name: d.type === "stay" ? d.name : `${d.startLocation} → ${d.endLocation}`,
           country: d.country || null,
+          start_location: d.type === "roadtrip" ? d.startLocation : null,
+          end_location: d.type === "roadtrip" ? d.endLocation : null,
+          transport_mode: d.type === "roadtrip" ? d.transportMode : null,
           start_date: d.startDate || null,
           end_date: d.endDate || null,
-          order_index: index,
-        }));
+          order_index: i,
+        };
 
-      if (destinationData.length > 0) {
-        const { error: destError } = await supabase
+        const { data: dest, error: destError } = await supabase
           .from("destinations")
-          .insert(destinationData);
+          .insert(destData)
+          .select()
+          .single();
 
         if (destError) throw destError;
+
+        // Create waypoints for road trips
+        if (d.type === "roadtrip" && d.waypoints.length > 0 && dest) {
+          const waypointData = d.waypoints
+            .filter((wp) => wp.name.trim())
+            .map((wp, wpIndex) => ({
+              destination_id: dest.id,
+              name: wp.name,
+              description: wp.description || null,
+              day_number: wp.dayNumber ? parseInt(wp.dayNumber) : null,
+              order_index: wpIndex,
+            }));
+
+          if (waypointData.length > 0) {
+            const { error: wpError } = await supabase
+              .from("waypoints")
+              .insert(waypointData);
+
+            if (wpError) throw wpError;
+          }
+        }
       }
 
       // Redirect to journey management
@@ -194,7 +280,11 @@ export default function NewJourneyPage() {
       case 2:
         return participants.some((p) => p.name.trim());
       case 3:
-        return destinations.some((d) => d.name.trim());
+        return destinations.some((d) =>
+          d.type === "stay"
+            ? d.name.trim()
+            : d.startLocation.trim() && d.endLocation.trim()
+        );
       default:
         return false;
     }
@@ -486,7 +576,7 @@ export default function NewJourneyPage() {
                 >
                   <div className="flex items-center justify-between">
                     <span className="font-medium text-[#2C1810]">
-                      Destination {index + 1}
+                      Leg {index + 1}
                     </span>
                     {destinations.length > 1 && (
                       <button
@@ -498,30 +588,170 @@ export default function NewJourneyPage() {
                     )}
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm text-[#6B5344] mb-1">City/Place</label>
-                      <input
-                        type="text"
-                        value={destination.name}
-                        onChange={(e) => updateDestination(index, "name", e.target.value)}
-                        placeholder="e.g., Cape Town"
-                        className="w-full px-3 py-2 rounded-lg border border-[#E5DDD5] focus:border-[#C9A227] outline-none text-sm"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm text-[#6B5344] mb-1">Country</label>
-                      <input
-                        type="text"
-                        value={destination.country}
-                        onChange={(e) => updateDestination(index, "country", e.target.value)}
-                        placeholder="e.g., South Africa"
-                        className="w-full px-3 py-2 rounded-lg border border-[#E5DDD5] focus:border-[#C9A227] outline-none text-sm"
-                      />
-                    </div>
+                  {/* Destination Type Selection */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => updateDestination(index, "type", "stay")}
+                      className={`flex items-center gap-3 p-3 rounded-lg border-2 transition-colors ${
+                        destination.type === "stay"
+                          ? "border-[#C9A227] bg-[#C9A227]/10"
+                          : "border-[#E5DDD5] hover:border-[#C9A227]/50"
+                      }`}
+                    >
+                      <Home className={`w-5 h-5 ${destination.type === "stay" ? "text-[#C9A227]" : "text-[#6B5344]"}`} />
+                      <div className="text-left">
+                        <div className={`font-medium text-sm ${destination.type === "stay" ? "text-[#2C1810]" : "text-[#6B5344]"}`}>
+                          Stay
+                        </div>
+                        <div className="text-xs text-[#6B5344]">One location</div>
+                      </div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => updateDestination(index, "type", "roadtrip")}
+                      className={`flex items-center gap-3 p-3 rounded-lg border-2 transition-colors ${
+                        destination.type === "roadtrip"
+                          ? "border-[#C9A227] bg-[#C9A227]/10"
+                          : "border-[#E5DDD5] hover:border-[#C9A227]/50"
+                      }`}
+                    >
+                      <Car className={`w-5 h-5 ${destination.type === "roadtrip" ? "text-[#C9A227]" : "text-[#6B5344]"}`} />
+                      <div className="text-left">
+                        <div className={`font-medium text-sm ${destination.type === "roadtrip" ? "text-[#2C1810]" : "text-[#6B5344]"}`}>
+                          Road Trip
+                        </div>
+                        <div className="text-xs text-[#6B5344]">A → B with stops</div>
+                      </div>
+                    </button>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
+                  {/* Stay Type Fields */}
+                  {destination.type === "stay" && (
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm text-[#6B5344] mb-1">City/Place</label>
+                        <input
+                          type="text"
+                          value={destination.name}
+                          onChange={(e) => updateDestination(index, "name", e.target.value)}
+                          placeholder="e.g., Cape Town"
+                          className="w-full px-3 py-2 rounded-lg border border-[#E5DDD5] focus:border-[#C9A227] outline-none text-sm"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm text-[#6B5344] mb-1">Country</label>
+                        <input
+                          type="text"
+                          value={destination.country}
+                          onChange={(e) => updateDestination(index, "country", e.target.value)}
+                          placeholder="e.g., South Africa"
+                          className="w-full px-3 py-2 rounded-lg border border-[#E5DDD5] focus:border-[#C9A227] outline-none text-sm"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Road Trip Type Fields */}
+                  {destination.type === "roadtrip" && (
+                    <>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm text-[#6B5344] mb-1">From</label>
+                          <input
+                            type="text"
+                            value={destination.startLocation}
+                            onChange={(e) => updateDestination(index, "startLocation", e.target.value)}
+                            placeholder="Starting point"
+                            className="w-full px-3 py-2 rounded-lg border border-[#E5DDD5] focus:border-[#C9A227] outline-none text-sm"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm text-[#6B5344] mb-1">To</label>
+                          <input
+                            type="text"
+                            value={destination.endLocation}
+                            onChange={(e) => updateDestination(index, "endLocation", e.target.value)}
+                            placeholder="Destination"
+                            className="w-full px-3 py-2 rounded-lg border border-[#E5DDD5] focus:border-[#C9A227] outline-none text-sm"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-sm text-[#6B5344] mb-1">Transport</label>
+                        <select
+                          value={destination.transportMode}
+                          onChange={(e) => updateDestination(index, "transportMode", e.target.value)}
+                          className="w-full px-3 py-2 rounded-lg border border-[#E5DDD5] focus:border-[#C9A227] outline-none text-sm"
+                        >
+                          <option value="car">🚗 By Car</option>
+                          <option value="train">🚂 By Train</option>
+                          <option value="bus">🚌 By Bus</option>
+                          <option value="boat">⛵ By Boat</option>
+                          <option value="plane">✈️ By Plane</option>
+                          <option value="other">Other</option>
+                        </select>
+                      </div>
+
+                      {/* Waypoints */}
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <label className="text-sm font-medium text-[#2C1810]">Stops Along the Way</label>
+                          <button
+                            type="button"
+                            onClick={() => addWaypoint(index)}
+                            className="text-sm text-[#E07B39] hover:text-[#C9A227] flex items-center gap-1"
+                          >
+                            <Plus className="w-4 h-4" />
+                            Add Stop
+                          </button>
+                        </div>
+
+                        {destination.waypoints.map((wp, wpIndex) => (
+                          <div key={wpIndex} className="flex gap-2 items-start bg-white p-3 rounded-lg">
+                            <div className="flex-1 grid grid-cols-3 gap-2">
+                              <input
+                                type="text"
+                                value={wp.name}
+                                onChange={(e) => updateWaypoint(index, wpIndex, "name", e.target.value)}
+                                placeholder="Stop name"
+                                className="px-2 py-1.5 rounded border border-[#E5DDD5] text-sm"
+                              />
+                              <input
+                                type="text"
+                                value={wp.description}
+                                onChange={(e) => updateWaypoint(index, wpIndex, "description", e.target.value)}
+                                placeholder="Notes"
+                                className="px-2 py-1.5 rounded border border-[#E5DDD5] text-sm"
+                              />
+                              <input
+                                type="number"
+                                value={wp.dayNumber}
+                                onChange={(e) => updateWaypoint(index, wpIndex, "dayNumber", e.target.value)}
+                                placeholder="Day #"
+                                className="px-2 py-1.5 rounded border border-[#E5DDD5] text-sm"
+                              />
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => removeWaypoint(index, wpIndex)}
+                              className="p-1 text-red-400 hover:text-red-600"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          </div>
+                        ))}
+
+                        {destination.waypoints.length === 0 && (
+                          <p className="text-sm text-[#6B5344] italic">No stops added yet</p>
+                        )}
+                      </div>
+                    </>
+                  )}
+
+                  {/* Common Date Fields */}
+                  <div className="grid grid-cols-2 gap-4 pt-2 border-t border-[#E5DDD5]">
                     <div>
                       <label className="block text-sm text-[#6B5344] mb-1">Start Date</label>
                       <input
@@ -548,7 +778,7 @@ export default function NewJourneyPage() {
                 onClick={addDestination}
                 className="w-full py-3 border-2 border-dashed border-[#E5DDD5] rounded-xl text-[#6B5344] hover:border-[#C9A227] hover:text-[#C9A227] transition-colors"
               >
-                + Add Another Destination
+                + Add Another Leg
               </button>
             </motion.div>
           )}

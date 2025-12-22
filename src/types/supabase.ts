@@ -158,35 +158,47 @@ export type Database = {
         Row: {
           country: string | null
           created_at: string | null
+          destination_type: string | null
           end_date: string | null
+          end_location: string | null
           id: string
           journey_id: string | null
           name: string
           order_index: number | null
           start_date: string | null
+          start_location: string | null
           theme_colors: Json | null
+          transport_mode: string | null
         }
         Insert: {
           country?: string | null
           created_at?: string | null
+          destination_type?: string | null
           end_date?: string | null
+          end_location?: string | null
           id?: string
           journey_id?: string | null
           name: string
           order_index?: number | null
           start_date?: string | null
+          start_location?: string | null
           theme_colors?: Json | null
+          transport_mode?: string | null
         }
         Update: {
           country?: string | null
           created_at?: string | null
+          destination_type?: string | null
           end_date?: string | null
+          end_location?: string | null
           id?: string
           journey_id?: string | null
           name?: string
           order_index?: number | null
           start_date?: string | null
+          start_location?: string | null
           theme_colors?: Json | null
+          transport_mode?: string | null
         }
         Relationships: [
           {
@@ -490,6 +502,47 @@ export type Database = {
             columns: ["card_id"]
             isOneToOne: false
             referencedRelation: "cards"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      waypoints: {
+        Row: {
+          created_at: string | null
+          day_number: number | null
+          description: string | null
+          destination_id: string | null
+          id: string
+          location: string | null
+          name: string
+          order_index: number | null
+        }
+        Insert: {
+          created_at?: string | null
+          day_number?: number | null
+          description?: string | null
+          destination_id?: string | null
+          id?: string
+          location?: string | null
+          name: string
+          order_index?: number | null
+        }
+        Update: {
+          created_at?: string | null
+          day_number?: number | null
+          description?: string | null
+          destination_id?: string | null
+          id?: string
+          location?: string | null
+          name?: string
+          order_index?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "waypoints_destination_id_fkey"
+            columns: ["destination_id"]
+            isOneToOne: false
+            referencedRelation: "destinations"
             referencedColumns: ["id"]
           },
         ]
