@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
@@ -18,6 +18,8 @@ import {
   RefreshCw,
   DollarSign,
   Clock,
+  ExternalLink,
+  Info,
 } from "lucide-react";
 import { CATEGORY_CONFIG, RARITY_CONFIG, PROFILE_CONFIG } from "@/types/database";
 import type { CardCategory, TargetProfile, Rarity } from "@/types/database";
@@ -58,6 +60,7 @@ interface GeneratedCard {
   estimatedCost: string | null;
   durationHours: number | null;
   bookingMethod: string | null;
+  bookingUrl: string | null;
 }
 
 interface UsageInfo {
@@ -86,9 +89,13 @@ export default function GenerateCardsPage() {
   const [usage, setUsage] = useState<UsageInfo | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const hasFetched = useRef(false);
 
   // Load journey data
   useEffect(() => {
+    if (hasFetched.current) return;
+    hasFetched.current = true;
+
     const loadJourney = async () => {
       const { data, error } = await supabase
         .from("journeys")
@@ -511,7 +518,7 @@ GENERATE: ${cardCount} unique experience cards tailored to this group`;
                       </span>
                     </div>
                     <p className="text-[#6B5344] text-sm mb-3">{card.description}</p>
-                    <div className="flex flex-wrap gap-3 text-xs text-[#6B5344]">
+                    <div className="flex flex-wrap gap-3 text-xs text-[#6B5344] mb-2">
                       <span className="flex items-center gap-1">
                         {CATEGORY_CONFIG[card.category]?.icon} {CATEGORY_CONFIG[card.category]?.label}
                       </span>
@@ -526,6 +533,23 @@ GENERATE: ${cardCount} unique experience cards tailored to this group`;
                         <Clock className="w-3 h-3" />
                         {card.durationHours ? `${card.durationHours}h` : "Flexible"}
                       </span>
+                    </div>
+                    {/* Booking info */}
+                    <div className="flex items-start gap-2 text-xs bg-[#FDF8F3] p-2 rounded-lg">
+                      <Info className="w-3 h-3 mt-0.5 text-[#6B5344] flex-shrink-0" />
+                      <div className="flex-1">
+                        <span className="text-[#6B5344]">{card.bookingMethod || "Just show up"}</span>
+                        {card.bookingUrl && (
+                          <a
+                            href={card.bookingUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="ml-2 inline-flex items-center gap-1 text-[#E07B39] hover:underline"
+                          >
+                            Book <ExternalLink className="w-3 h-3" />
+                          </a>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>

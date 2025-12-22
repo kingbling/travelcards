@@ -36,6 +36,7 @@ export interface GeneratedCard {
   estimatedCost: string | null;
   durationHours: number | null;
   bookingMethod: string | null;
+  bookingUrl: string | null;
 }
 
 // Get season from date and hemisphere
@@ -158,7 +159,8 @@ Return a JSON array with exactly this structure for each card:
     "rarity": "common|uncommon|rare|legendary",
     "estimatedCost": "Local price + USD equivalent, e.g. 'R150 (~$8)' or 'Free'",
     "durationHours": number,
-    "bookingMethod": "How to book or access this experience"
+    "bookingMethod": "How to book/organize: 'Book via website', 'Reserve by phone', 'Just show up', 'Bring your own wine and blanket', etc.",
+    "bookingUrl": "Direct URL to book or venue website, or null if just show up"
   }
 ]
 
@@ -217,6 +219,7 @@ export function parseGeneratedCards(response: string): GeneratedCard[] {
       estimatedCost: card.estimatedCost ? String(card.estimatedCost) : null,
       durationHours: typeof card.durationHours === "number" ? card.durationHours : null,
       bookingMethod: card.bookingMethod ? String(card.bookingMethod) : null,
+      bookingUrl: card.bookingUrl && card.bookingUrl !== "null" ? String(card.bookingUrl) : null,
     }));
   } catch (error) {
     console.error("Failed to parse AI response:", error);
