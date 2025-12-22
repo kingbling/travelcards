@@ -818,42 +818,70 @@ export default function NewJourneyPage() {
                   )}
 
                   {/* Common Date Fields */}
-                  <div className="grid grid-cols-2 gap-4 pt-2 border-t border-[#E5DDD5]">
-                    <div>
-                      <label className="block text-sm text-[#6B5344] mb-1">Start Date</label>
-                      <input
-                        type="date"
-                        value={destination.startDate}
-                        onChange={(e) => {
-                          const newStartDate = e.target.value;
-                          updateDestination(index, "startDate", newStartDate);
-                          // Clear end date if it's now before start date
-                          if (destination.endDate && newStartDate > destination.endDate) {
-                            updateDestination(index, "endDate", "");
-                          }
-                        }}
-                        className="w-full px-3 py-2 rounded-lg border border-[#E5DDD5] focus:border-[#C9A227] outline-none text-sm"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm text-[#6B5344] mb-1">End Date</label>
-                      <input
-                        type="date"
-                        value={destination.endDate}
-                        min={destination.startDate || undefined}
-                        onChange={(e) => updateDestination(index, "endDate", e.target.value)}
-                        disabled={!destination.startDate}
-                        className={`w-full px-3 py-2 rounded-lg border outline-none text-sm ${
-                          !destination.startDate
-                            ? "border-[#E5DDD5] bg-gray-50 text-gray-400 cursor-not-allowed"
-                            : "border-[#E5DDD5] focus:border-[#C9A227]"
-                        }`}
-                      />
-                      {!destination.startDate && (
-                        <p className="text-xs text-[#6B5344] mt-1">Select start date first</p>
-                      )}
-                    </div>
-                  </div>
+                  {(() => {
+                    const prevEndDate = index > 0 ? destinations[index - 1].endDate : null;
+                    const startDateMin = prevEndDate || undefined;
+                    const startDateDisabled = index > 0 && !prevEndDate;
+
+                    return (
+                      <div className="grid grid-cols-2 gap-4 pt-2 border-t border-[#E5DDD5]">
+                        <div>
+                          <label className="block text-sm text-[#6B5344] mb-1">Start Date</label>
+                          <input
+                            type="date"
+                            value={destination.startDate}
+                            min={startDateMin}
+                            disabled={startDateDisabled}
+                            onChange={(e) => {
+                              const newStartDate = e.target.value;
+                              updateDestination(index, "startDate", newStartDate);
+                              // Clear end date if it's now before start date
+                              if (destination.endDate && newStartDate > destination.endDate) {
+                                updateDestination(index, "endDate", "");
+                              }
+                            }}
+                            className={`w-full px-3 py-2 rounded-lg border outline-none text-sm ${
+                              startDateDisabled
+                                ? "border-[#E5DDD5] bg-gray-50 text-gray-400 cursor-not-allowed"
+                                : "border-[#E5DDD5] focus:border-[#C9A227]"
+                            }`}
+                          />
+                          {startDateDisabled && (
+                            <p className="text-xs text-[#6B5344] mt-1">Complete previous leg first</p>
+                          )}
+                        </div>
+                        <div>
+                          <label className="block text-sm text-[#6B5344] mb-1">End Date</label>
+                          <input
+                            type="date"
+                            value={destination.endDate}
+                            min={destination.startDate || undefined}
+                            onChange={(e) => {
+                              const newEndDate = e.target.value;
+                              updateDestination(index, "endDate", newEndDate);
+                              // Clear next leg's start date if it's now before this end date
+                              if (index < destinations.length - 1) {
+                                const nextStart = destinations[index + 1].startDate;
+                                if (nextStart && newEndDate > nextStart) {
+                                  updateDestination(index + 1, "startDate", "");
+                                  updateDestination(index + 1, "endDate", "");
+                                }
+                              }
+                            }}
+                            disabled={!destination.startDate}
+                            className={`w-full px-3 py-2 rounded-lg border outline-none text-sm ${
+                              !destination.startDate
+                                ? "border-[#E5DDD5] bg-gray-50 text-gray-400 cursor-not-allowed"
+                                : "border-[#E5DDD5] focus:border-[#C9A227]"
+                            }`}
+                          />
+                          {!destination.startDate && (
+                            <p className="text-xs text-[#6B5344] mt-1">Select start date first</p>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
               ))}
 
