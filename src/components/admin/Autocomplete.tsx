@@ -242,6 +242,7 @@ import citiesData from "@/data/cities.json";
 interface CityAutocompleteProps {
   value: string;
   onChange: (value: string) => void;
+  onCountryDetected?: (countryName: string) => void; // Called when city's country is detected
   country?: string; // Optional country filter (by name)
   placeholder?: string;
   className?: string;
@@ -250,6 +251,7 @@ interface CityAutocompleteProps {
 export function CityAutocomplete({
   value,
   onChange,
+  onCountryDetected,
   country,
   placeholder = "Search city...",
   className = "",
@@ -277,13 +279,29 @@ export function CityAutocomplete({
     return {
       label: showFlag ? `${city.name} ${cityCountry.flag}` : city.name,
       value: city.name,
+      countryCode: city.country, // Store country code for lookup
     };
   });
+
+  const handleChange = (cityName: string) => {
+    onChange(cityName);
+
+    // Try to detect country from selected city
+    if (onCountryDetected) {
+      const selectedCity = citiesData.find((c) => c.name === cityName);
+      if (selectedCity) {
+        const detectedCountry = countriesData.find((c) => c.code === selectedCity.country);
+        if (detectedCountry) {
+          onCountryDetected(detectedCountry.name);
+        }
+      }
+    }
+  };
 
   return (
     <Autocomplete
       value={value}
-      onChange={onChange}
+      onChange={handleChange}
       options={options}
       placeholder={placeholder}
       className={className}

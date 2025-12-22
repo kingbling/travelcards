@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { createClient } from "@/lib/supabase/client";
@@ -100,6 +100,105 @@ export default function EditJourneyPage() {
     },
   ]);
 
+  // Auto-save destinations when they change (debounced)
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const isInitialLoad = useRef(true);
+  const [isAutoSaving, setIsAutoSaving] = useState(false);
+
+  const saveDestinations = useCallback(async () => {
+    if (!journeyId || step !== 3) return;
+
+    setIsAutoSaving(true);
+    try {
+      // Delete existing destinations
+      const { data: existingDests } = await supabase
+        .from("destinations")
+        .select("id")
+        .eq("journey_id", journeyId);
+
+      if (existingDests && existingDests.length > 0) {
+        for (const dest of existingDests) {
+          await supabase.from("waypoints").delete().eq("destination_id", dest.id);
+        }
+        await supabase.from("destinations").delete().eq("journey_id", journeyId);
+      }
+
+      // Save current destinations
+      const validDestinations = destinations.filter((d) =>
+        d.type === "stay" ? d.name.trim() : d.startLocation.trim() && d.endLocation.trim()
+      );
+
+      for (let i = 0; i < validDestinations.length; i++) {
+        const d = validDestinations[i];
+        const destData = {
+          journey_id: journeyId,
+          destination_type: d.type,
+          name: d.type === "stay" ? d.name : `${d.startLocation} → ${d.endLocation}`,
+          country: d.type === "stay" ? d.country : null,
+          start_location: d.type === "roadtrip" ? d.startLocation : null,
+          end_location: d.type === "roadtrip" ? d.endLocation : null,
+          transport_mode: d.type === "roadtrip" ? d.transportMode : null,
+          start_date: d.startDate || null,
+          end_date: d.endDate || null,
+          order_index: i,
+        };
+
+        const { data: newDest } = await supabase
+          .from("destinations")
+          .insert(destData)
+          .select()
+          .single();
+
+        // Save waypoints for roadtrip
+        if (newDest && d.type === "roadtrip" && d.waypoints.length > 0) {
+          const waypointData = d.waypoints
+            .filter((wp) => wp.name.trim())
+            .map((wp, wpIndex) => ({
+              destination_id: newDest.id,
+              name: wp.name,
+              description: wp.description || null,
+              day_number: wp.dayNumber ? parseInt(wp.dayNumber) : null,
+              order_index: wpIndex,
+            }));
+
+          if (waypointData.length > 0) {
+            await supabase.from("waypoints").insert(waypointData);
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Auto-save error:", err);
+    } finally {
+      setIsAutoSaving(false);
+    }
+  }, [journeyId, destinations, step, supabase]);
+
+  // Debounced auto-save effect for destinations
+  useEffect(() => {
+    // Skip initial load to avoid saving when data is first loaded from DB
+    if (isInitialLoad.current) {
+      return;
+    }
+
+    if (!journeyId || step !== 3) return;
+
+    // Clear previous timeout
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+
+    // Set new timeout for auto-save (1.5 seconds after last change)
+    saveTimeoutRef.current = setTimeout(() => {
+      saveDestinations();
+    }, 1500);
+
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
+  }, [destinations, journeyId, step, saveDestinations]);
+
   // Load existing journey data
   useEffect(() => {
     const loadJourneyData = async () => {
@@ -186,6 +285,10 @@ export default function EditJourneyPage() {
         setError("Failed to load journey data");
       } finally {
         setIsLoadingData(false);
+        // Allow auto-save after initial load is complete
+        setTimeout(() => {
+          isInitialLoad.current = false;
+        }, 100);
       }
     };
 
@@ -727,11 +830,19 @@ export default function EditJourneyPage() {
               exit={{ opacity: 0, x: -20 }}
               className="space-y-6"
             >
-              <div className="flex items-center gap-3 mb-6">
-                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#E07B39]/20 to-[#C9A227]/20 flex items-center justify-center">
-                  <MapPin className="w-5 h-5 text-[#E07B39]" />
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#E07B39]/20 to-[#C9A227]/20 flex items-center justify-center">
+                    <MapPin className="w-5 h-5 text-[#E07B39]" />
+                  </div>
+                  <h2 className="font-serif text-xl text-[#2C1810]">Where Are You Going?</h2>
                 </div>
-                <h2 className="font-serif text-xl text-[#2C1810]">Where Are You Going?</h2>
+                {isAutoSaving && (
+                  <span className="text-sm text-[#6B5344] flex items-center gap-2">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Saving...
+                  </span>
+                )}
               </div>
 
               {destinations.map((destination, index) => (
@@ -795,20 +906,25 @@ export default function EditJourneyPage() {
                   {destination.type === "stay" && (
                     <div className="grid grid-cols-2 gap-4">
                       <div>
+                        <label className="block text-sm text-[#6B5344] mb-1">City/Place</label>
+                        <CityAutocomplete
+                          value={destination.name}
+                          onChange={(value) => updateDestination(index, "name", value)}
+                          onCountryDetected={(countryName) => {
+                            if (!destination.country) {
+                              updateDestination(index, "country", countryName);
+                            }
+                          }}
+                          country={destination.country}
+                          placeholder="Search city..."
+                        />
+                      </div>
+                      <div>
                         <label className="block text-sm text-[#6B5344] mb-1">Country</label>
                         <CountrySelect
                           value={destination.country}
                           onChange={(value) => updateDestination(index, "country", value)}
                           placeholder="Select country..."
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm text-[#6B5344] mb-1">City/Place</label>
-                        <CityAutocomplete
-                          value={destination.name}
-                          onChange={(value) => updateDestination(index, "name", value)}
-                          country={destination.country}
-                          placeholder="Search city..."
                         />
                       </div>
                     </div>
