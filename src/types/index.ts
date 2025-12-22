@@ -1,6 +1,6 @@
 export type Rarity = "common" | "uncommon" | "rare" | "legendary";
 
-export type TargetProfile = "kathi_solo" | "couple" | "family" | "kids";
+export type TargetProfile = "solo" | "couple" | "family" | "kids";
 
 export type Category =
   | "food"
@@ -10,7 +10,9 @@ export type Category =
   | "nature"
   | "culture"
   | "adventure"
-  | "family";
+  | "family"
+  | "spa"
+  | "music";
 
 export type Destination = "cape_town" | "bali" | "japan";
 
@@ -21,25 +23,27 @@ export interface ExperienceCard {
   category: Category;
   targetProfile: TargetProfile;
   rarity: Rarity;
-  estimatedCost: string;
-  currency: string;
-  durationHours: number;
+  estimatedCost?: string;
+  currency?: string;
+  durationHours?: number;
   bookingUrl?: string;
   bookingMethod?: string;
+  personalNote?: string;
   imageUrl?: string;
-  destination: Destination;
-  isRevealed: boolean;
-  weekNumber: number;
+  destination?: string;
+  isRevealed?: boolean;
+  weekNumber?: number;
+  themeColors?: { primary: string; secondary: string };
 }
 
 export const PROFILE_CONFIG: Record<
   TargetProfile,
   { label: string; icon: string; color: string }
 > = {
-  kathi_solo: { label: "Kathi Solo", icon: "👩", color: "#D4837E" },
-  couple: { label: "Date Night", icon: "💑", color: "#E07B39" },
-  family: { label: "Family Fun", icon: "👨‍👩‍👧‍👧", color: "#4A5568" },
-  kids: { label: "Kids' Adventure", icon: "👧👧", color: "#059669" },
+  solo: { label: "Solo", icon: "👩", color: "#8B5CF6" },
+  couple: { label: "Date Night", icon: "💑", color: "#EC4899" },
+  family: { label: "Family", icon: "👨‍👩‍👧‍👧", color: "#10B981" },
+  kids: { label: "Kids", icon: "👧👧", color: "#F59E0B" },
 };
 
 export const RARITY_CONFIG: Record<
@@ -55,10 +59,12 @@ export const RARITY_CONFIG: Record<
 export const CATEGORY_CONFIG: Record<Category, { label: string; icon: string }> = {
   food: { label: "Food", icon: "🍽️" },
   wine: { label: "Wine", icon: "🍷" },
-  animals: { label: "Animals", icon: "🦁" },
+  animals: { label: "Animals", icon: "🐧" },
   art: { label: "Art", icon: "🎨" },
   nature: { label: "Nature", icon: "🌿" },
   culture: { label: "Culture", icon: "🏛️" },
   adventure: { label: "Adventure", icon: "🏔️" },
-  family: { label: "Family", icon: "🎡" },
+  family: { label: "Family Fun", icon: "🎉" },
+  spa: { label: "Spa & Wellness", icon: "💆" },
+  music: { label: "Music", icon: "🎵" },
 };

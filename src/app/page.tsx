@@ -127,7 +127,7 @@ export default function Home() {
             transition={{ delay: 0.9 }}
           >
             <Calendar className="w-4 h-4" />
-            <span>Full deck unlocks January 29, 2025</span>
+            <span>Full deck unlocks January 29, 2026</span>
           </motion.div>
         </motion.div>
       </section>

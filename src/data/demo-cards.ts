@@ -16,7 +16,7 @@ export const DEMO_CARDS: ExperienceCard[] = [
     bookingMethod: "Online or at gate",
     destination: "cape_town",
     isRevealed: false,
-    weekNumber: 1,
+    weekNumber: 1, // Week 1: Family fun to kick off the trip
   },
   {
     id: "2",
@@ -33,32 +33,15 @@ export const DEMO_CARDS: ExperienceCard[] = [
     bookingMethod: "Reservation recommended",
     destination: "cape_town",
     isRevealed: false,
-    weekNumber: 1,
+    weekNumber: 2, // Week 2: Romantic date night
   },
   {
     id: "3",
-    name: "Private Chef's Table at La Colombe",
-    description:
-      "One of Africa's best restaurants invites you to their intimate Chef's Table. A 9-course tasting menu with wine pairings, watching the masters at work. Michelin-worthy magic.",
-    category: "food",
-    targetProfile: "couple",
-    rarity: "legendary",
-    estimatedCost: "R4500",
-    currency: "ZAR",
-    durationHours: 4,
-    bookingUrl: "https://www.lacolombe.co.za",
-    bookingMethod: "Book 2 weeks ahead",
-    destination: "cape_town",
-    isRevealed: false,
-    weekNumber: 2,
-  },
-  {
-    id: "4",
     name: "Zeitz MOCAA - Museum of Contemporary Art",
     description:
       "Africa's largest contemporary art museum, housed in a stunning converted grain silo. Explore thought-provoking exhibitions spanning the continent's creative spirit.",
     category: "art",
-    targetProfile: "kathi_solo",
+    targetProfile: "solo",
     rarity: "uncommon",
     estimatedCost: "R230",
     currency: "ZAR",
@@ -67,10 +50,10 @@ export const DEMO_CARDS: ExperienceCard[] = [
     bookingMethod: "Online tickets",
     destination: "cape_town",
     isRevealed: false,
-    weekNumber: 1,
+    weekNumber: 3, // Week 3: Solo time for Kathi
   },
   {
-    id: "5",
+    id: "4",
     name: "Two Oceans Aquarium Adventure",
     description:
       "Juna and Olivia can meet sharks, penguins, turtles, and colorful fish! Touch pools, underwater tunnels, and feeding times make this a magical underwater world.",
@@ -84,6 +67,23 @@ export const DEMO_CARDS: ExperienceCard[] = [
     bookingMethod: "Book online",
     destination: "cape_town",
     isRevealed: false,
-    weekNumber: 1,
+    weekNumber: 4, // Week 4: Kids' special day
+  },
+  {
+    id: "5",
+    name: "Private Chef's Table at La Colombe",
+    description:
+      "One of Africa's best restaurants invites you to their intimate Chef's Table. A 9-course tasting menu with wine pairings, watching the masters at work. Michelin-worthy magic.",
+    category: "food",
+    targetProfile: "couple",
+    rarity: "legendary",
+    estimatedCost: "R4500",
+    currency: "ZAR",
+    durationHours: 4,
+    bookingUrl: "https://www.lacolombe.co.za",
+    bookingMethod: "Book 2 weeks ahead",
+    destination: "cape_town",
+    isRevealed: false,
+    weekNumber: 5, // Week 5: Grand finale - legendary experience!
   },
 ];
