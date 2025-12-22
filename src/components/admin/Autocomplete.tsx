@@ -180,7 +180,7 @@ export function Autocomplete({
           {filteredOptions.length > 0 ? (
             filteredOptions.map((option, index) => (
               <li
-                key={option.value}
+                key={`${option.value}-${index}`}
                 onClick={() => selectOption(option)}
                 onMouseEnter={() => setHighlightedIndex(index)}
                 className={`px-3 py-2 cursor-pointer text-sm ${
