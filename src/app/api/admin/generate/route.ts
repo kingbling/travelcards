@@ -140,6 +140,12 @@ export async function POST(request: Request) {
       ],
     });
 
+    // Extract thinking content
+    const thinkingText = message.content
+      .filter((block): block is Anthropic.ThinkingBlock => block.type === "thinking")
+      .map(block => block.thinking)
+      .join("\n");
+
     // Extract text content
     const responseText = message.content
       .filter((block): block is Anthropic.TextBlock => block.type === "text")
@@ -165,6 +171,7 @@ export async function POST(request: Request) {
       success: true,
       cards: uniqueCards,
       prompt,
+      thinking: thinkingText,
       destination: targetDestination,
       stats: {
         requested: cardCount,

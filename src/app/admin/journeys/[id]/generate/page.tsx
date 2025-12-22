@@ -14,12 +14,14 @@ import {
   Check,
   X,
   ChevronRight,
+  ChevronDown,
   Edit3,
   RefreshCw,
   DollarSign,
   Clock,
   ExternalLink,
   Info,
+  Brain,
 } from "lucide-react";
 import { CATEGORY_CONFIG, RARITY_CONFIG, PROFILE_CONFIG } from "@/types/database";
 import type { CardCategory, TargetProfile, Rarity } from "@/types/database";
@@ -89,6 +91,8 @@ export default function GenerateCardsPage() {
   const [isEditing, setIsEditing] = useState(false);
   const [generatedCards, setGeneratedCards] = useState<GeneratedCard[]>([]);
   const [usage, setUsage] = useState<UsageInfo | null>(null);
+  const [thinking, setThinking] = useState<string | null>(null);
+  const [showThinking, setShowThinking] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const hasFetched = useRef(false);
@@ -187,6 +191,9 @@ GENERATE: ${cardCount} unique experience cards tailored to this group`;
       setGeneratedCards(data.cards);
       if (data.usage) {
         setUsage(data.usage);
+      }
+      if (data.thinking) {
+        setThinking(data.thinking);
       }
       setStep("review");
     } catch (err) {
@@ -471,6 +478,7 @@ GENERATE: ${cardCount} unique experience cards tailored to this group`;
             <button
               onClick={() => {
                 setGeneratedCards([]);
+                setThinking(null);
                 setStep("preview");
               }}
               className="flex items-center gap-2 text-[#6B5344] hover:text-[#2C1810]"
@@ -479,6 +487,34 @@ GENERATE: ${cardCount} unique experience cards tailored to this group`;
               Regenerate
             </button>
           </div>
+
+          {/* AI Thinking Panel */}
+          {thinking && (
+            <div className="bg-gradient-to-r from-purple-50 to-blue-50 rounded-xl border border-purple-200 overflow-hidden">
+              <button
+                onClick={() => setShowThinking(!showThinking)}
+                className="w-full p-4 flex items-center justify-between text-left"
+              >
+                <div className="flex items-center gap-2">
+                  <Brain className="w-5 h-5 text-purple-600" />
+                  <span className="font-medium text-purple-900">AI Reasoning</span>
+                  {usage && (
+                    <span className="text-xs text-purple-600 bg-purple-100 px-2 py-0.5 rounded-full">
+                      {usage.totalTokens.toLocaleString()} tokens · ${usage.costUsd.toFixed(4)}
+                    </span>
+                  )}
+                </div>
+                <ChevronDown className={`w-5 h-5 text-purple-600 transition-transform ${showThinking ? "rotate-180" : ""}`} />
+              </button>
+              {showThinking && (
+                <div className="px-4 pb-4">
+                  <pre className="whitespace-pre-wrap text-sm text-purple-900 bg-white/50 p-4 rounded-lg max-h-96 overflow-y-auto font-mono">
+                    {thinking}
+                  </pre>
+                </div>
+              )}
+            </div>
+          )}
 
           {error && (
             <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-red-600">
