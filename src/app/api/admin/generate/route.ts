@@ -233,6 +233,8 @@ export async function PUT(request: Request) {
       durationHours: number | null;
       bookingMethod: string | null;
       bookingUrl: string | null;
+      locationName: string | null;
+      locationAddress: string | null;
     }) => {
       orderIndex++;
       return {
@@ -246,6 +248,8 @@ export async function PUT(request: Request) {
         duration_hours: card.durationHours,
         booking_method: card.bookingMethod,
         booking_url: card.bookingUrl,
+        location_name: card.locationName,
+        location_address: card.locationAddress,
         status: "draft",
         generation_prompt: prompt,
         order_index: orderIndex,

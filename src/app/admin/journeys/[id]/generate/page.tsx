@@ -61,6 +61,8 @@ interface GeneratedCard {
   durationHours: number | null;
   bookingMethod: string | null;
   bookingUrl: string | null;
+  locationName: string | null;
+  locationAddress: string | null;
 }
 
 interface UsageInfo {
@@ -551,6 +553,21 @@ GENERATE: ${cardCount} unique experience cards tailored to this group`;
                         )}
                       </div>
                     </div>
+                    {/* Location/Map */}
+                    {card.locationAddress && (
+                      <div className="flex items-center gap-2 text-xs mt-2">
+                        <MapPin className="w-3 h-3 text-[#E07B39]" />
+                        <span className="text-[#6B5344]">{card.locationName || card.locationAddress}</span>
+                        <a
+                          href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(card.locationAddress)}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-[#E07B39] hover:underline"
+                        >
+                          Map <ExternalLink className="w-3 h-3" />
+                        </a>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>

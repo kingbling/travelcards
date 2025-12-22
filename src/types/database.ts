@@ -170,6 +170,8 @@ export interface Database {
           duration_hours: number | null;
           booking_url: string | null;
           booking_method: string | null;
+          location_name: string | null;
+          location_address: string | null;
           is_prebooked: boolean;
           booking_date: string | null;
           personal_note: string | null;
@@ -196,6 +198,8 @@ export interface Database {
           duration_hours?: number | null;
           booking_url?: string | null;
           booking_method?: string | null;
+          location_name?: string | null;
+          location_address?: string | null;
           is_prebooked?: boolean;
           booking_date?: string | null;
           personal_note?: string | null;
@@ -222,6 +226,8 @@ export interface Database {
           duration_hours?: number | null;
           booking_url?: string | null;
           booking_method?: string | null;
+          location_name?: string | null;
+          location_address?: string | null;
           is_prebooked?: boolean;
           booking_date?: string | null;
           personal_note?: string | null;

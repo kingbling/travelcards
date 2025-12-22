@@ -37,6 +37,8 @@ export interface GeneratedCard {
   durationHours: number | null;
   bookingMethod: string | null;
   bookingUrl: string | null;
+  locationName: string | null;
+  locationAddress: string | null;
 }
 
 // Get season from date and hemisphere
@@ -160,7 +162,9 @@ Return a JSON array with exactly this structure for each card:
     "estimatedCost": "Local price + USD equivalent, e.g. 'R150 (~$8)' or 'Free'",
     "durationHours": number,
     "bookingMethod": "How to book/organize: 'Book via website', 'Reserve by phone', 'Just show up', 'Bring your own wine and blanket', etc.",
-    "bookingUrl": "Direct URL to book or venue website, or null if just show up"
+    "bookingUrl": "Direct URL to book or venue website, or null if just show up",
+    "locationName": "Venue or spot name for the map pin",
+    "locationAddress": "Full address or landmark description for Google Maps, e.g. 'Table Mountain, Cape Town, South Africa'"
   }
 ]
 
@@ -220,6 +224,8 @@ export function parseGeneratedCards(response: string): GeneratedCard[] {
       durationHours: typeof card.durationHours === "number" ? card.durationHours : null,
       bookingMethod: card.bookingMethod ? String(card.bookingMethod) : null,
       bookingUrl: card.bookingUrl && card.bookingUrl !== "null" ? String(card.bookingUrl) : null,
+      locationName: card.locationName ? String(card.locationName) : null,
+      locationAddress: card.locationAddress ? String(card.locationAddress) : null,
     }));
   } catch (error) {
     console.error("Failed to parse AI response:", error);

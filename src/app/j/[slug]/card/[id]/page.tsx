@@ -11,6 +11,7 @@ import {
   Star,
   Camera,
   MessageSquare,
+  MapPin,
 } from "lucide-react";
 import { Card as CardType, Memory, RARITY_CONFIG, CATEGORY_CONFIG, CardCategory, PROFILE_CONFIG, TargetProfile } from "@/types/database";
 
@@ -205,6 +206,30 @@ export default function CardDetailPage() {
                 Book This Experience
                 <ExternalLink className="w-4 h-4" />
               </a>
+            )}
+
+            {/* Location/Map */}
+            {card.location_address && (
+              <div className="mt-4 p-4 bg-[#FDF8F3] rounded-xl">
+                <div className="flex items-start gap-3">
+                  <MapPin className="w-5 h-5 text-[#E07B39] mt-0.5" />
+                  <div className="flex-1">
+                    {card.location_name && (
+                      <p className="font-medium text-[#2C1810] mb-1">{card.location_name}</p>
+                    )}
+                    <p className="text-sm text-[#6B5344] mb-3">{card.location_address}</p>
+                    <a
+                      href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(card.location_address)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 text-sm text-[#E07B39] hover:underline"
+                    >
+                      <MapPin className="w-4 h-4" />
+                      Open in Maps
+                    </a>
+                  </div>
+                </div>
+              </div>
             )}
 
             {/* Personal note */}
