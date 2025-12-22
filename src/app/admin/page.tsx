@@ -14,7 +14,7 @@ export default async function AdminDashboard() {
     return null;
   }
 
-  // Fetch journeys with destinations and cards
+  // Fetch journeys with destinations and cards (cards are nested through destinations)
   const { data: journeys, error } = await supabase
     .from("journeys")
     .select(`
@@ -24,8 +24,7 @@ export default async function AdminDashboard() {
       unique_slug,
       is_published,
       created_at,
-      destinations(id),
-      cards(id)
+      destinations(id, cards(id))
     `)
     .eq("curator_id", user.id)
     .order("created_at", { ascending: false });
@@ -65,6 +64,11 @@ export default async function AdminDashboard() {
           {journeys.map((journey) => {
             // Check if journey setup is incomplete (no destinations)
             const isIncomplete = !journey.destinations || journey.destinations.length === 0;
+            // Count total cards across all destinations
+            const totalCards = journey.destinations?.reduce(
+              (sum, dest) => sum + (dest.cards?.length ?? 0),
+              0
+            ) ?? 0;
 
             return (
               <div
@@ -105,7 +109,7 @@ export default async function AdminDashboard() {
                   </div>
                   <div className="flex items-center gap-2 text-sm text-[#6B5344]">
                     <Sparkles className="w-4 h-4" />
-                    <span>{journey.cards?.length ?? 0} cards</span>
+                    <span>{totalCards} cards</span>
                   </div>
                 </div>
 
