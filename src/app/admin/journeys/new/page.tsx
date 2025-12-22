@@ -824,7 +824,14 @@ export default function NewJourneyPage() {
                       <input
                         type="date"
                         value={destination.startDate}
-                        onChange={(e) => updateDestination(index, "startDate", e.target.value)}
+                        onChange={(e) => {
+                          const newStartDate = e.target.value;
+                          updateDestination(index, "startDate", newStartDate);
+                          // Clear end date if it's now before start date
+                          if (destination.endDate && newStartDate > destination.endDate) {
+                            updateDestination(index, "endDate", "");
+                          }
+                        }}
                         className="w-full px-3 py-2 rounded-lg border border-[#E5DDD5] focus:border-[#C9A227] outline-none text-sm"
                       />
                     </div>
@@ -833,9 +840,18 @@ export default function NewJourneyPage() {
                       <input
                         type="date"
                         value={destination.endDate}
+                        min={destination.startDate || undefined}
                         onChange={(e) => updateDestination(index, "endDate", e.target.value)}
-                        className="w-full px-3 py-2 rounded-lg border border-[#E5DDD5] focus:border-[#C9A227] outline-none text-sm"
+                        disabled={!destination.startDate}
+                        className={`w-full px-3 py-2 rounded-lg border outline-none text-sm ${
+                          !destination.startDate
+                            ? "border-[#E5DDD5] bg-gray-50 text-gray-400 cursor-not-allowed"
+                            : "border-[#E5DDD5] focus:border-[#C9A227]"
+                        }`}
                       />
+                      {!destination.startDate && (
+                        <p className="text-xs text-[#6B5344] mt-1">Select start date first</p>
+                      )}
                     </div>
                   </div>
                 </div>
