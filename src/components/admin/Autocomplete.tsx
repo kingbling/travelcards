@@ -259,15 +259,26 @@ export function CityAutocomplete({
     ? countriesData.find((c) => c.name === country)?.code
     : undefined;
 
-  // Filter cities by country if provided
-  const filteredCities = countryCode
+  // Get cities for selected country (prioritized) and all other cities
+  const countryCities = countryCode
     ? citiesData.filter((city) => city.country === countryCode)
+    : [];
+  const otherCities = countryCode
+    ? citiesData.filter((city) => city.country !== countryCode)
     : citiesData;
 
-  const options = filteredCities.map((city) => ({
-    label: city.name,
-    value: city.name,
-  }));
+  // Combine: country cities first, then all others
+  const allCities = [...countryCities, ...otherCities];
+
+  const options = allCities.map((city) => {
+    // Add country flag for cities from other countries
+    const cityCountry = countriesData.find((c) => c.code === city.country);
+    const showFlag = countryCode && city.country !== countryCode && cityCountry;
+    return {
+      label: showFlag ? `${city.name} ${cityCountry.flag}` : city.name,
+      value: city.name,
+    };
+  });
 
   return (
     <Autocomplete
