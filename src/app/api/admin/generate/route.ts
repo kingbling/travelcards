@@ -126,10 +126,14 @@ export async function POST(request: Request) {
     // Build the prompt
     const prompt = buildPrompt(context, cardCount);
 
-    // Call Anthropic API
+    // Call Anthropic API with extended thinking
     const message = await anthropic.messages.create({
       model: "claude-sonnet-4-20250514",
-      max_tokens: 4096,
+      max_tokens: 16000,
+      thinking: {
+        type: "enabled",
+        budget_tokens: 10000,
+      },
       system: SYSTEM_PROMPT,
       messages: [
         { role: "user", content: prompt }
