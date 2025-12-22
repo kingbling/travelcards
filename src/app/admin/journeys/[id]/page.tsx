@@ -184,7 +184,7 @@ export default async function JourneyManagePage({ params }: Props) {
       </div>
 
       {/* Quick Actions */}
-      <div className="grid md:grid-cols-3 gap-6 mb-8">
+      <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
         {/* Generate Cards */}
         <Link
           href={`/admin/journeys/${id}/generate`}
@@ -193,7 +193,7 @@ export default async function JourneyManagePage({ params }: Props) {
           <Sparkles className="w-8 h-8 mb-4" />
           <h3 className="font-serif text-xl mb-2">Generate Cards</h3>
           <p className="text-white/80 text-sm">
-            Use AI to create experience cards for your destinations
+            Use AI to create experience cards
           </p>
         </Link>
 
@@ -207,12 +207,29 @@ export default async function JourneyManagePage({ params }: Props) {
           </div>
           <h3 className="font-serif text-xl text-[#2C1810] mb-2">Manage Cards</h3>
           <p className="text-[#6B5344] text-sm">
-            Review, edit, and approve generated cards
+            Review and approve cards
           </p>
           <p className="text-sm mt-2">
             <span className="text-amber-600">{cardStats.draft} drafts</span>
             {" • "}
             <span className="text-emerald-600">{cardStats.approved} approved</span>
+          </p>
+        </Link>
+
+        {/* Reveal Schedule */}
+        <Link
+          href={`/admin/journeys/${id}/schedule`}
+          className="bg-white rounded-2xl p-6 shadow-sm hover:shadow-lg transition-shadow border border-[#E5DDD5]"
+        >
+          <div className="w-8 h-8 mb-4 rounded-full bg-blue-500/10 flex items-center justify-center">
+            <Calendar className="w-5 h-5 text-blue-500" />
+          </div>
+          <h3 className="font-serif text-xl text-[#2C1810] mb-2">Schedule</h3>
+          <p className="text-[#6B5344] text-sm">
+            Plan when cards are revealed
+          </p>
+          <p className="text-sm mt-2 text-[#6B5344]">
+            Set dates and frequency
           </p>
         </Link>
 
@@ -226,7 +243,7 @@ export default async function JourneyManagePage({ params }: Props) {
           </div>
           <h3 className="font-serif text-xl text-[#2C1810] mb-2">Love Letters</h3>
           <p className="text-[#6B5344] text-sm">
-            Write personal messages for your recipient
+            Write personal messages
           </p>
           <p className="text-sm mt-2 text-[#6B5344]">
             {journey.love_letters?.length ?? 0} letters written

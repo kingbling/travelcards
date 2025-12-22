@@ -28,14 +28,17 @@ export type Database = {
           destination_id: string | null
           duration_hours: number | null
           estimated_cost: string | null
+          experience_date: string | null
           generation_prompt: string | null
           id: string
+          is_admin_preview: boolean | null
           is_prebooked: boolean | null
           is_revealed: boolean | null
           name: string
           order_index: number | null
           personal_note: string | null
           rarity: string | null
+          reveal_date: string | null
           revealed_at: string | null
           status: string | null
           target_profile: string | null
@@ -54,14 +57,17 @@ export type Database = {
           destination_id?: string | null
           duration_hours?: number | null
           estimated_cost?: string | null
+          experience_date?: string | null
           generation_prompt?: string | null
           id?: string
+          is_admin_preview?: boolean | null
           is_prebooked?: boolean | null
           is_revealed?: boolean | null
           name: string
           order_index?: number | null
           personal_note?: string | null
           rarity?: string | null
+          reveal_date?: string | null
           revealed_at?: string | null
           status?: string | null
           target_profile?: string | null
@@ -80,14 +86,17 @@ export type Database = {
           destination_id?: string | null
           duration_hours?: number | null
           estimated_cost?: string | null
+          experience_date?: string | null
           generation_prompt?: string | null
           id?: string
+          is_admin_preview?: boolean | null
           is_prebooked?: boolean | null
           is_revealed?: boolean | null
           name?: string
           order_index?: number | null
           personal_note?: string | null
           rarity?: string | null
+          reveal_date?: string | null
           revealed_at?: string | null
           status?: string | null
           target_profile?: string | null
@@ -266,6 +275,7 @@ export type Database = {
       journeys: {
         Row: {
           access_code: string | null
+          advance_reveal_days: number | null
           created_at: string | null
           curator_id: string | null
           id: string
@@ -274,11 +284,13 @@ export type Database = {
           published_at: string | null
           recipient_email: string | null
           recipient_name: string | null
+          reveals_per_week: number | null
           unique_slug: string | null
           updated_at: string | null
         }
         Insert: {
           access_code?: string | null
+          advance_reveal_days?: number | null
           created_at?: string | null
           curator_id?: string | null
           id?: string
@@ -287,11 +299,13 @@ export type Database = {
           published_at?: string | null
           recipient_email?: string | null
           recipient_name?: string | null
+          reveals_per_week?: number | null
           unique_slug?: string | null
           updated_at?: string | null
         }
         Update: {
           access_code?: string | null
+          advance_reveal_days?: number | null
           created_at?: string | null
           curator_id?: string | null
           id?: string
@@ -300,6 +314,7 @@ export type Database = {
           published_at?: string | null
           recipient_email?: string | null
           recipient_name?: string | null
+          reveals_per_week?: number | null
           unique_slug?: string | null
           updated_at?: string | null
         }
