@@ -156,7 +156,7 @@ Return a JSON array with exactly this structure for each card:
     "category": "food|wine|animals|art|nature|culture|adventure|family|spa|music",
     "targetProfile": "solo|couple|family|kids",
     "rarity": "common|uncommon|rare|legendary",
-    "estimatedCost": "$ amount per person or 'Free'",
+    "estimatedCost": "Local price + USD equivalent, e.g. 'R150 (~$8)' or 'Free'",
     "durationHours": number,
     "bookingMethod": "How to book or access this experience"
   }
@@ -183,7 +183,8 @@ You know:
 
 Be specific and practical:
 - Use real venue names and locations
-- Provide honest cost estimates (many things should be under $20 or free)
+- Provide costs in LOCAL CURRENCY with USD equivalent: "R150 (~$8)", "€25 (~$27)", "Free"
+- Many things should be under $20 or free
 - Include practical tips locals would know
 - Mix famous spots with hidden gems
 
