@@ -150,6 +150,13 @@ export async function POST(request: Request) {
       card => !isDuplicateCard(card.name, existingCardNames)
     );
 
+    // Calculate cost (Claude Sonnet pricing: $3/1M input, $15/1M output)
+    const inputTokens = message.usage.input_tokens;
+    const outputTokens = message.usage.output_tokens;
+    const inputCost = (inputTokens / 1_000_000) * 3;
+    const outputCost = (outputTokens / 1_000_000) * 15;
+    const totalCost = inputCost + outputCost;
+
     return NextResponse.json({
       success: true,
       cards: uniqueCards,
@@ -160,6 +167,12 @@ export async function POST(request: Request) {
         generated: generatedCards.length,
         afterDedup: uniqueCards.length,
         existingCount: existingCardNames.length,
+      },
+      usage: {
+        inputTokens,
+        outputTokens,
+        totalTokens: inputTokens + outputTokens,
+        costUsd: totalCost,
       },
     });
   } catch (error) {

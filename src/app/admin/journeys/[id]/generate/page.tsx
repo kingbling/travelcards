@@ -16,6 +16,8 @@ import {
   ChevronRight,
   Edit3,
   RefreshCw,
+  DollarSign,
+  Clock,
 } from "lucide-react";
 import { CATEGORY_CONFIG, RARITY_CONFIG, PROFILE_CONFIG } from "@/types/database";
 import type { CardCategory, TargetProfile, Rarity } from "@/types/database";
@@ -58,6 +60,13 @@ interface GeneratedCard {
   bookingMethod: string | null;
 }
 
+interface UsageInfo {
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  costUsd: number;
+}
+
 type Step = "select" | "preview" | "generating" | "review";
 
 export default function GenerateCardsPage() {
@@ -74,6 +83,7 @@ export default function GenerateCardsPage() {
   const [prompt, setPrompt] = useState("");
   const [isEditing, setIsEditing] = useState(false);
   const [generatedCards, setGeneratedCards] = useState<GeneratedCard[]>([]);
+  const [usage, setUsage] = useState<UsageInfo | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -101,7 +111,8 @@ export default function GenerateCardsPage() {
     };
 
     loadJourney();
-  }, [journeyId, supabase]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [journeyId]);
 
   // Generate prompt preview
   const generatePromptPreview = (dest: Destination) => {
@@ -165,6 +176,9 @@ GENERATE: ${cardCount} unique experience cards tailored to this group`;
       }
 
       setGeneratedCards(data.cards);
+      if (data.usage) {
+        setUsage(data.usage);
+      }
       setStep("review");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Generation failed");
@@ -504,8 +518,14 @@ GENERATE: ${cardCount} unique experience cards tailored to this group`;
                       <span className="flex items-center gap-1">
                         {PROFILE_CONFIG[card.targetProfile]?.icon} {PROFILE_CONFIG[card.targetProfile]?.label}
                       </span>
-                      {card.estimatedCost && <span>{card.estimatedCost}</span>}
-                      {card.durationHours && <span>{card.durationHours}h</span>}
+                      <span className="flex items-center gap-1 font-medium text-[#2C1810]">
+                        <DollarSign className="w-3 h-3" />
+                        {card.estimatedCost || "Free"}
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <Clock className="w-3 h-3" />
+                        {card.durationHours ? `${card.durationHours}h` : "Flexible"}
+                      </span>
                     </div>
                   </div>
                 </div>
