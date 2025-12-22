@@ -27,8 +27,7 @@ interface JourneyWithRelations {
   unique_slug: string | null;
   is_published: boolean;
   participants: Participant[] | null;
-  destinations: (Destination & { chapters: Chapter[] | null })[] | null;
-  cards: Card[] | null;
+  destinations: (Destination & { chapters: Chapter[] | null; cards: Card[] | null })[] | null;
   love_letters: LoveLetter[] | null;
 }
 
@@ -41,7 +40,7 @@ export default async function JourneyManagePage({ params }: Props) {
     redirect("/login");
   }
 
-  // Fetch journey with all related data
+  // Fetch journey with all related data (cards are nested through destinations)
   const { data, error } = await supabase
     .from("journeys")
     .select(`
@@ -49,9 +48,9 @@ export default async function JourneyManagePage({ params }: Props) {
       participants(*),
       destinations(
         *,
-        chapters(*)
+        chapters(*),
+        cards(*)
       ),
-      cards(*),
       love_letters(*)
     `)
     .eq("id", id)
@@ -64,12 +63,15 @@ export default async function JourneyManagePage({ params }: Props) {
 
   const journey = data as unknown as JourneyWithRelations;
 
+  // Aggregate all cards from all destinations
+  const allCards = journey.destinations?.flatMap((d) => d.cards ?? []) ?? [];
+
   // Count cards by status
   const cardStats = {
-    total: journey.cards?.length ?? 0,
-    draft: journey.cards?.filter((c) => c.status === "draft").length ?? 0,
-    approved: journey.cards?.filter((c) => c.status === "approved").length ?? 0,
-    revealed: journey.cards?.filter((c) => c.is_revealed).length ?? 0,
+    total: allCards.length,
+    draft: allCards.filter((c) => c.status === "draft").length,
+    approved: allCards.filter((c) => c.status === "approved").length,
+    revealed: allCards.filter((c) => c.is_revealed).length,
   };
 
   return (
