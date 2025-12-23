@@ -11,9 +11,14 @@ import {
   type DestinationContext,
 } from "@/lib/ai/generate-cards";
 
+// Force dynamic to prevent caching for SSE
+export const dynamic = "force-dynamic";
+
 const anthropic = new Anthropic();
 
 export async function POST(request: Request) {
+  const encoder = new TextEncoder();
+
   try {
     const supabase = await createClient();
 
@@ -126,64 +131,106 @@ export async function POST(request: Request) {
     // Build the prompt
     const prompt = buildPrompt(context, cardCount);
 
-    // Call Anthropic API with extended thinking
-    const message = await anthropic.messages.create({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 16000,
-      thinking: {
-        type: "enabled",
-        budget_tokens: 10000,
+    // Create SSE stream with real-time thinking
+    const readable = new ReadableStream({
+      async start(controller) {
+        try {
+          // Send initial event with prompt
+          controller.enqueue(encoder.encode(
+            `data: ${JSON.stringify({ type: "init", prompt, destination: targetDestination })}\n\n`
+          ));
+
+          // Stream from Anthropic with extended thinking
+          const stream = anthropic.messages.stream({
+            model: "claude-sonnet-4-20250514",
+            max_tokens: 16000,
+            thinking: {
+              type: "enabled",
+              budget_tokens: 10000,
+            },
+            system: SYSTEM_PROMPT,
+            messages: [
+              { role: "user", content: prompt }
+            ],
+          });
+
+          let thinkingText = "";
+          let responseText = "";
+
+          // Stream events as they come
+          for await (const event of stream) {
+            if (event.type === "content_block_delta") {
+              const delta = event.delta as { type: string; thinking?: string; text?: string };
+
+              if (delta.type === "thinking_delta" && delta.thinking) {
+                thinkingText += delta.thinking;
+                controller.enqueue(encoder.encode(
+                  `data: ${JSON.stringify({ type: "thinking", content: delta.thinking })}\n\n`
+                ));
+              } else if (delta.type === "text_delta" && delta.text) {
+                responseText += delta.text;
+                controller.enqueue(encoder.encode(
+                  `data: ${JSON.stringify({ type: "text", content: delta.text })}\n\n`
+                ));
+              }
+            }
+          }
+
+          // Get final message for usage stats
+          const finalMessage = await stream.finalMessage();
+
+          // Parse the response
+          const generatedCards = parseGeneratedCards(responseText);
+
+          // Filter out duplicates
+          const uniqueCards = generatedCards.filter(
+            card => !isDuplicateCard(card.name, existingCardNames)
+          );
+
+          // Calculate cost
+          const inputTokens = finalMessage.usage.input_tokens;
+          const outputTokens = finalMessage.usage.output_tokens;
+          const inputCost = (inputTokens / 1_000_000) * 3;
+          const outputCost = (outputTokens / 1_000_000) * 15;
+          const totalCost = inputCost + outputCost;
+
+          // Send final result
+          controller.enqueue(encoder.encode(
+            `data: ${JSON.stringify({
+              type: "complete",
+              cards: uniqueCards,
+              thinking: thinkingText,
+              stats: {
+                requested: cardCount,
+                generated: generatedCards.length,
+                afterDedup: uniqueCards.length,
+                existingCount: existingCardNames.length,
+              },
+              usage: {
+                inputTokens,
+                outputTokens,
+                totalTokens: inputTokens + outputTokens,
+                costUsd: totalCost,
+              },
+            })}\n\n`
+          ));
+
+          controller.close();
+        } catch (error) {
+          console.error("Stream error:", error);
+          controller.enqueue(encoder.encode(
+            `data: ${JSON.stringify({ type: "error", error: error instanceof Error ? error.message : "Generation failed" })}\n\n`
+          ));
+          controller.close();
+        }
       },
-      system: SYSTEM_PROMPT,
-      messages: [
-        { role: "user", content: prompt }
-      ],
     });
 
-    // Extract thinking content
-    const thinkingText = message.content
-      .filter((block): block is Anthropic.ThinkingBlock => block.type === "thinking")
-      .map(block => block.thinking)
-      .join("\n");
-
-    // Extract text content
-    const responseText = message.content
-      .filter((block): block is Anthropic.TextBlock => block.type === "text")
-      .map(block => block.text)
-      .join("\n");
-
-    // Parse the response
-    const generatedCards = parseGeneratedCards(responseText);
-
-    // Filter out duplicates
-    const uniqueCards = generatedCards.filter(
-      card => !isDuplicateCard(card.name, existingCardNames)
-    );
-
-    // Calculate cost (Claude Sonnet pricing: $3/1M input, $15/1M output)
-    const inputTokens = message.usage.input_tokens;
-    const outputTokens = message.usage.output_tokens;
-    const inputCost = (inputTokens / 1_000_000) * 3;
-    const outputCost = (outputTokens / 1_000_000) * 15;
-    const totalCost = inputCost + outputCost;
-
-    return NextResponse.json({
-      success: true,
-      cards: uniqueCards,
-      prompt,
-      thinking: thinkingText,
-      destination: targetDestination,
-      stats: {
-        requested: cardCount,
-        generated: generatedCards.length,
-        afterDedup: uniqueCards.length,
-        existingCount: existingCardNames.length,
-      },
-      usage: {
-        inputTokens,
-        outputTokens,
-        totalTokens: inputTokens + outputTokens,
-        costUsd: totalCost,
+    return new Response(readable, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache, no-transform",
+        "Connection": "keep-alive",
       },
     });
   } catch (error) {

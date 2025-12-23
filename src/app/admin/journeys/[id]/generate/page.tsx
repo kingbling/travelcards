@@ -164,12 +164,14 @@ GENERATE: ${cardCount} unique experience cards tailored to this group`;
     setStep("preview");
   };
 
-  // Handle generation
+  // Handle generation with SSE streaming
   const handleGenerate = async () => {
     if (!selectedDestination) return;
 
     setStep("generating");
     setError(null);
+    setThinking("");
+    setShowThinking(true); // Show thinking panel during generation
 
     try {
       const res = await fetch("/api/admin/generate", {
@@ -182,20 +184,48 @@ GENERATE: ${cardCount} unique experience cards tailored to this group`;
         }),
       });
 
-      const data = await res.json();
-
       if (!res.ok) {
-        throw new Error(data.error || "Generation failed");
+        const errorData = await res.json();
+        throw new Error(errorData.error || "Generation failed");
       }
 
-      setGeneratedCards(data.cards);
-      if (data.usage) {
-        setUsage(data.usage);
+      // Handle SSE stream
+      const reader = res.body?.getReader();
+      if (!reader) throw new Error("No response body");
+
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            try {
+              const data = JSON.parse(line.slice(6));
+
+              if (data.type === "thinking") {
+                // Update thinking in real-time
+                setThinking(prev => (prev || "") + data.content);
+              } else if (data.type === "complete") {
+                // Generation complete
+                setGeneratedCards(data.cards);
+                setUsage(data.usage);
+                setStep("review");
+              } else if (data.type === "error") {
+                throw new Error(data.error);
+              }
+            } catch (parseError) {
+              console.error("Parse error:", parseError);
+            }
+          }
+        }
       }
-      if (data.thinking) {
-        setThinking(data.thinking);
-      }
-      setStep("review");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Generation failed");
       setStep("preview");
@@ -451,17 +481,37 @@ GENERATE: ${cardCount} unique experience cards tailored to this group`;
         </div>
       )}
 
-      {/* Step 3: Generating */}
+      {/* Step 3: Generating with real-time thinking */}
       {step === "generating" && (
-        <div className="text-center py-16">
-          <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-gradient-to-br from-[#E07B39] to-[#C9A227] flex items-center justify-center animate-pulse">
-            <Sparkles className="w-10 h-10 text-white" />
+        <div className="space-y-6">
+          {/* Header */}
+          <div className="text-center">
+            <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-br from-[#E07B39] to-[#C9A227] flex items-center justify-center animate-pulse">
+              <Brain className="w-8 h-8 text-white" />
+            </div>
+            <h2 className="font-serif text-2xl text-[#2C1810] mb-2">AI is thinking...</h2>
+            <p className="text-[#6B5344]">
+              Curating experiences for {selectedDestination?.name}
+            </p>
           </div>
-          <h2 className="font-serif text-2xl text-[#2C1810] mb-2">Creating experiences...</h2>
-          <p className="text-[#6B5344]">
-            AI is crafting personalized cards for {selectedDestination?.name}
-          </p>
-          <Loader2 className="w-6 h-6 animate-spin text-[#C9A227] mx-auto mt-6" />
+
+          {/* Real-time thinking display */}
+          <div className="bg-gradient-to-r from-purple-50 to-blue-50 rounded-xl border border-purple-200 overflow-hidden">
+            <div className="p-4 border-b border-purple-200 flex items-center gap-2">
+              <Brain className="w-5 h-5 text-purple-600 animate-pulse" />
+              <span className="font-medium text-purple-900">AI Reasoning (Live)</span>
+              <Loader2 className="w-4 h-4 animate-spin text-purple-600 ml-auto" />
+            </div>
+            <div className="p-4 max-h-96 overflow-y-auto">
+              {thinking ? (
+                <pre className="whitespace-pre-wrap text-sm text-purple-900 font-mono leading-relaxed">
+                  {thinking}
+                </pre>
+              ) : (
+                <p className="text-purple-600 text-sm italic">Waiting for AI to start thinking...</p>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
