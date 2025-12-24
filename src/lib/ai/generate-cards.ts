@@ -208,13 +208,15 @@ JSON FORMAT:
     "category": "food|wine|animals|art|nature|culture|adventure|family|spa|music",
     "targetProfile": "solo|couple|family|kids",
     "rarity": "common|uncommon|rare|legendary",
-    "estimatedCost": "R150 (~$8) or Free",
+    "estimatedCost": "TOTAL cost for all participants (family=${travelers.length} people, couple=2, solo=1)",
     "durationHours": 2,
     "bookingMethod": "How to access",
     "locationName": "only if ref=null",
     "locationAddress": "only if ref=null"
   }
 ]
+
+COST RULE: estimatedCost = TOTAL for the group. If targetProfile is "family", multiply per-person price by ${travelers.length}. If "couple", multiply by 2. If "solo", use single price.
 
 CRITICAL: Use refs from the list! We have pictures/URLs for those.`;
 }

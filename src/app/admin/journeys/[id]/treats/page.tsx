@@ -262,7 +262,7 @@ export default function TreatsPage() {
               <span className="text-blue-600">{filteredStats.revealed} revealed</span>
             )}
             {filteredStats.unrevealed > 0 && (
-              <span className="text-[#E07B39]">{filteredStats.unrevealed} pending</span>
+              <span className="text-[#E07B39]">{filteredStats.unrevealed} unrevealed</span>
             )}
           </div>
         </div>
@@ -518,7 +518,7 @@ export default function TreatsPage() {
                     {treat.category && (
                       <span className="px-2 py-0.5 bg-[#FAF0E6] rounded capitalize">{treat.category}</span>
                     )}
-                    {treat.rarity && (
+                    {(treat.rarity === "rare" || treat.rarity === "legendary") && (
                       <span className="px-2 py-0.5 bg-[#FAF0E6] rounded capitalize">{treat.rarity}</span>
                     )}
                   </div>

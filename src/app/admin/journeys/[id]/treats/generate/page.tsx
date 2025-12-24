@@ -17,6 +17,10 @@ import {
   DollarSign,
   Brain,
   Globe,
+  Terminal,
+  Database,
+  FileText,
+  Clock,
 } from "lucide-react";
 import { CATEGORY_CONFIG, RARITY_CONFIG } from "@/types/database";
 import type { CardCategory, Rarity } from "@/types/database";
@@ -72,7 +76,15 @@ export default function GenerateTreatsPage() {
   const [generatedTreats, setGeneratedTreats] = useState<GeneratedTreat[]>([]);
   const [usage, setUsage] = useState<UsageInfo | null>(null);
   const [thinking, setThinking] = useState<string | null>(null);
+  const [streamingOutput, setStreamingOutput] = useState<string>("");
+  const [fullPrompt, setFullPrompt] = useState<string | null>(null);
+  const [consoleLogs, setConsoleLogs] = useState<{ timestamp: string; level: string; source: string; message: string }[]>([]);
   const [showThinking, setShowThinking] = useState(false);
+  const [showConsoleLogs, setShowConsoleLogs] = useState(true); // Default to Console tab
+  const [showInputData, setShowInputData] = useState(false);
+  const [showOutput, setShowOutput] = useState(false);
+  const [generationStartTime, setGenerationStartTime] = useState<number | null>(null);
+  const [elapsedTime, setElapsedTime] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const hasFetched = useRef(false);
@@ -117,10 +129,28 @@ export default function GenerateTreatsPage() {
     loadJourney();
   }, [journeyId, supabase, urlDestinationId]);
 
+  // Elapsed time timer during generation
+  useEffect(() => {
+    if (step !== "generating" || !generationStartTime) return;
+
+    const interval = setInterval(() => {
+      setElapsedTime(Math.floor((Date.now() - generationStartTime) / 1000));
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [step, generationStartTime]);
+
   // Handle destination selection
   const handleSelectDestination = (dest: Destination | "global") => {
     setSelectedDestination(dest);
     setStep("preview");
+  };
+
+  // Format elapsed time as mm:ss
+  const formatElapsedTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, "0")}`;
   };
 
   // Handle generation with SSE streaming
@@ -128,7 +158,14 @@ export default function GenerateTreatsPage() {
     setStep("generating");
     setError(null);
     setThinking("");
-    setShowThinking(true);
+    setStreamingOutput("");
+    setFullPrompt(null);
+    setConsoleLogs([]);
+    setShowConsoleLogs(true);
+    setShowInputData(false);
+    setShowOutput(false);
+    setGenerationStartTime(Date.now());
+    setElapsedTime(0);
 
     try {
       const res = await fetch(`/api/admin/journeys/${journeyId}/treats/generate`, {
@@ -152,6 +189,7 @@ export default function GenerateTreatsPage() {
 
       const decoder = new TextDecoder();
       let buffer = "";
+      let receivedComplete = false;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -166,9 +204,23 @@ export default function GenerateTreatsPage() {
             try {
               const data = JSON.parse(line.slice(6));
 
-              if (data.type === "thinking") {
+              if (data.type === "log") {
+                setConsoleLogs(prev => [...prev, {
+                  timestamp: data.timestamp,
+                  level: data.level,
+                  source: data.source,
+                  message: data.message,
+                }]);
+              } else if (data.type === "init") {
+                setFullPrompt(data.prompt);
+              } else if (data.type === "thinking") {
                 setThinking(prev => (prev || "") + data.content);
+              } else if (data.type === "output") {
+                setStreamingOutput(prev => prev + data.content);
+              } else if (data.type === "heartbeat") {
+                // Connection kept alive
               } else if (data.type === "complete") {
+                receivedComplete = true;
                 const treats = data.treats.map((t: GeneratedTreat) => ({ ...t, selected: true }));
                 setGeneratedTreats(treats);
                 setUsage(data.usage);
@@ -176,11 +228,19 @@ export default function GenerateTreatsPage() {
               } else if (data.type === "error") {
                 throw new Error(data.error);
               }
-            } catch {
-              // Skip malformed SSE events
+            } catch (parseErr) {
+              // Skip malformed SSE events but don't break loop
+              if (parseErr instanceof Error && parseErr.message !== "Unexpected end of JSON input") {
+                console.error("SSE parse error:", parseErr);
+              }
             }
           }
         }
+      }
+
+      // Check if we completed successfully
+      if (!receivedComplete) {
+        throw new Error("Stream ended unexpectedly without completion. The AI may have timed out.");
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Generation failed");
@@ -437,22 +497,104 @@ export default function GenerateTreatsPage() {
               </h2>
               <p className="text-sm text-[#6B5344]">AI is thinking about personalized treats...</p>
             </div>
+            {/* Elapsed Time */}
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-[#FDF8F3] rounded-lg">
+              <Clock className="w-4 h-4 text-[#6B5344]" />
+              <span className="text-sm font-mono text-[#2C1810]">{formatElapsedTime(elapsedTime)}</span>
+            </div>
           </div>
 
-          {/* AI Thinking Display */}
+          {/* Tabs for Console, Input, Thinking, Output */}
           <div className="bg-white rounded-xl border border-[#E5DDD5] overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-[#E5DDD5] bg-[#2C1810]">
-              <div className="flex items-center gap-2 text-white">
+            <div className="flex border-b border-[#E5DDD5]">
+              <button
+                onClick={() => { setShowInputData(false); setShowConsoleLogs(true); setShowOutput(false); }}
+                className={`flex-1 px-4 py-3 text-sm font-medium flex items-center justify-center gap-2 transition-colors ${
+                  showConsoleLogs
+                    ? "bg-[#2C1810] text-white"
+                    : "text-[#6B5344] hover:bg-[#FDF8F3]"
+                }`}
+              >
+                <Terminal className="w-4 h-4" />
+                Console
+                {consoleLogs.length > 0 && (
+                  <span className="text-xs bg-white/20 px-1.5 py-0.5 rounded-full">{consoleLogs.length}</span>
+                )}
+              </button>
+              <button
+                onClick={() => { setShowInputData(true); setShowConsoleLogs(false); setShowOutput(false); }}
+                className={`flex-1 px-4 py-3 text-sm font-medium flex items-center justify-center gap-2 transition-colors ${
+                  showInputData
+                    ? "bg-[#2C1810] text-white"
+                    : "text-[#6B5344] hover:bg-[#FDF8F3]"
+                }`}
+              >
+                <Database className="w-4 h-4" />
+                Input
+              </button>
+              <button
+                onClick={() => { setShowInputData(false); setShowConsoleLogs(false); setShowOutput(false); }}
+                className={`flex-1 px-4 py-3 text-sm font-medium flex items-center justify-center gap-2 transition-colors ${
+                  !showInputData && !showConsoleLogs && !showOutput
+                    ? "bg-[#2C1810] text-white"
+                    : "text-[#6B5344] hover:bg-[#FDF8F3]"
+                }`}
+              >
                 <Brain className="w-4 h-4" />
-                <span className="text-sm font-medium">AI Thinking</span>
-              </div>
-              <Loader2 className="w-4 h-4 animate-spin text-white/70" />
+                Thinking
+              </button>
+              <button
+                onClick={() => { setShowInputData(false); setShowConsoleLogs(false); setShowOutput(true); }}
+                className={`flex-1 px-4 py-3 text-sm font-medium flex items-center justify-center gap-2 transition-colors ${
+                  showOutput
+                    ? "bg-[#2C1810] text-white"
+                    : "text-[#6B5344] hover:bg-[#FDF8F3]"
+                }`}
+              >
+                <FileText className="w-4 h-4" />
+                Output
+                {streamingOutput && (
+                  <span className="text-xs bg-white/20 px-1.5 py-0.5 rounded-full">{Math.round(streamingOutput.length / 1000)}k</span>
+                )}
+              </button>
             </div>
 
-            <div className="p-4 max-h-[400px] overflow-y-auto bg-[#1a1a1a]">
-              <pre className="whitespace-pre-wrap text-sm text-green-400 font-mono leading-relaxed">
-                {thinking || "Waiting for AI to start thinking..."}
-              </pre>
+            <div className="p-4 max-h-[500px] overflow-y-auto bg-[#1a1a1a]">
+              {showOutput ? (
+                <pre className="whitespace-pre-wrap text-sm text-blue-400 font-mono leading-relaxed">
+                  {streamingOutput || "Waiting for AI to generate output..."}
+                </pre>
+              ) : showConsoleLogs ? (
+                <div className="font-mono text-xs space-y-1">
+                  {consoleLogs.length === 0 ? (
+                    <span className="text-gray-500">Waiting for logs...</span>
+                  ) : (
+                    consoleLogs.map((log, i) => {
+                      const time = new Date(log.timestamp).toLocaleTimeString();
+                      const levelColor = log.level === "error" ? "text-red-400" :
+                                        log.level === "warn" ? "text-yellow-400" : "text-gray-400";
+                      const sourceColor = log.source === "AI" ? "text-purple-400" :
+                                         log.source === "TREATS" ? "text-orange-400" : "text-cyan-400";
+                      return (
+                        <div key={i} className="flex gap-2">
+                          <span className="text-gray-600">[{time}]</span>
+                          <span className={levelColor}>{log.level.toUpperCase().padEnd(5)}</span>
+                          <span className={sourceColor}>[{log.source}]</span>
+                          <span className="text-gray-300">{log.message}</span>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              ) : showInputData ? (
+                <pre className="whitespace-pre-wrap text-sm text-cyan-400 font-mono leading-relaxed">
+                  {fullPrompt || "Waiting for prompt data..."}
+                </pre>
+              ) : (
+                <pre className="whitespace-pre-wrap text-sm text-green-400 font-mono leading-relaxed">
+                  {thinking || "Waiting for AI to start thinking..."}
+                </pre>
+              )}
             </div>
           </div>
         </div>
@@ -591,15 +733,17 @@ export default function GenerateTreatsPage() {
                     <p className="text-sm text-[#6B5344] line-clamp-2 mb-2">{treat.description}</p>
 
                     <div className="flex flex-wrap items-center gap-2 text-xs text-[#6B5344]">
-                      <span
-                        className="px-2 py-0.5 rounded-full"
-                        style={{
-                          backgroundColor: RARITY_CONFIG[treat.rarity]?.bgColor || "#f5f5f5",
-                          color: RARITY_CONFIG[treat.rarity]?.color || "#666",
-                        }}
-                      >
-                        {RARITY_CONFIG[treat.rarity]?.label || treat.rarity}
-                      </span>
+                      {(treat.rarity === "rare" || treat.rarity === "legendary") && (
+                        <span
+                          className="px-2 py-0.5 rounded-full"
+                          style={{
+                            backgroundColor: RARITY_CONFIG[treat.rarity]?.bgColor || "#f5f5f5",
+                            color: RARITY_CONFIG[treat.rarity]?.color || "#666",
+                          }}
+                        >
+                          {RARITY_CONFIG[treat.rarity]?.label || treat.rarity}
+                        </span>
+                      )}
                       {treat.estimatedCost && (
                         <span className="flex items-center gap-1">
                           <DollarSign className="w-3 h-3" />

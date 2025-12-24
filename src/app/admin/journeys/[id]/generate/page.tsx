@@ -985,15 +985,17 @@ GENERATE: ${cardCount} unique experience cards tailored to this group`;
                   <div className="flex-1 p-4">
                     <div className="flex items-center gap-2 mb-1 flex-wrap">
                       <h3 className="font-medium text-[#2C1810]">{card.name}</h3>
-                      <span
-                        className="px-2 py-0.5 text-xs rounded-full"
-                        style={{
-                          backgroundColor: getRarityConfig(card.rarity).bgColor,
-                          color: getRarityConfig(card.rarity).color,
-                        }}
-                      >
-                        {getRarityConfig(card.rarity).label}
-                      </span>
+                      {(card.rarity === "rare" || card.rarity === "legendary") && (
+                        <span
+                          className="px-2 py-0.5 text-xs rounded-full"
+                          style={{
+                            backgroundColor: getRarityConfig(card.rarity).bgColor,
+                            color: getRarityConfig(card.rarity).color,
+                          }}
+                        >
+                          {getRarityConfig(card.rarity).label}
+                        </span>
+                      )}
                       {card.amadeusActivityId && (
                         <span className="px-2 py-0.5 text-xs rounded-full bg-green-100 text-green-700 flex items-center gap-1">
                           <Check className="w-3 h-3" />

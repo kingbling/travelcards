@@ -656,11 +656,26 @@ export async function PUT(request: Request) {
         durationHours: number | null;
         bookingMethod: string | null;
         bookingUrl: string | null;
+        pictureUrl?: string | null;
         locationName: string | null;
         locationAddress: string | null;
+        locationLat?: number | null;
+        locationLng?: number | null;
+        amadeusActivityId?: string | null;
+        googlePlaceId?: string | null;
       }, index: number) => {
-        // Enrich with Google Places data
-        const placeData = await enrichCardWithPlaceData(card, destinationName);
+        // Use existing location data from enriched cards, only fetch if missing
+        let locationLat = card.locationLat || null;
+        let locationLng = card.locationLng || null;
+        let googlePlaceId = card.googlePlaceId || null;
+
+        // Only enrich via API if we don't have location data (AI-generated cards without refs)
+        if (!locationLat && !locationLng && !googlePlaceId && card.locationName) {
+          const placeData = await enrichCardWithPlaceData(card, destinationName);
+          locationLat = placeData.location_lat;
+          locationLng = placeData.location_lng;
+          googlePlaceId = placeData.google_place_id;
+        }
 
         return {
           destination_id: destinationId,
@@ -673,11 +688,13 @@ export async function PUT(request: Request) {
           duration_hours: card.durationHours,
           booking_method: card.bookingMethod,
           booking_url: card.bookingUrl,
+          picture_url: card.pictureUrl || null,
           location_name: card.locationName,
           location_address: card.locationAddress,
-          location_lat: placeData.location_lat,
-          location_lng: placeData.location_lng,
-          google_place_id: placeData.google_place_id,
+          location_lat: locationLat,
+          location_lng: locationLng,
+          amadeus_activity_id: card.amadeusActivityId || null,
+          google_place_id: googlePlaceId,
           status: "approved",
           generation_prompt: prompt,
           order_index: startOrderIndex + index,

@@ -85,7 +85,7 @@ export function ResetQuickAction({ journeyId, revealedCount, treatsRevealedCount
                       <li>Reset {treatsRevealedCount} revealed {treatsRevealedCount === 1 ? 'treat' : 'treats'} to hidden</li>
                     )}
                     <li>Clear all reveal history</li>
-                    <li>Recalculate reveal dates</li>
+                    <li>Clear all treat reveal history</li>
                     <li>Preserve all memories and notes</li>
                   </ul>
                 </div>
@@ -165,7 +165,7 @@ export function ResetQuickAction({ journeyId, revealedCount, treatsRevealedCount
           </div>
           <div className="flex-1 min-w-0">
             <h3 className="font-medium text-[#2C1810] break-words">
-              {isResetting ? "Resetting..." : "Reset Reveals"}
+              {isResetting ? "Resetting..." : "Reset All Reveals and Treats"}
             </h3>
             {totalRevealed > 0 && (
               <p className="text-xs text-red-600 break-words">

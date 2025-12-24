@@ -7,6 +7,7 @@ import { MapPin, Calendar, ChevronRight, Lock, List, Map as MapIcon, Gift } from
 import { Destination } from "@/types/database";
 import type { CardLocation } from "@/types";
 import { useJourneyAuth } from "@/hooks/useJourneyAuth";
+import { useDestinationPhotos } from "@/hooks/useDestinationPhoto";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 import { Tabs } from "@/components/ui/Tabs";
 import { JourneyMap } from "@/components/journey/JourneyMap";
@@ -36,6 +37,16 @@ export default function JourneyPage() {
   const [hasTreats, setHasTreats] = useState(false);
 
   const { isAuthenticated, isLoading: authLoading } = useJourneyAuth({ slug });
+
+  // Prepare destinations for photo fetching (with IDs for caching)
+  const destinationsList = (journey?.destinations || []).map(d => ({
+    id: d.id,
+    name: d.name,
+    country: d.country,
+  }));
+
+  // Fetch destination photos (cached in DB after first fetch)
+  const { photos: destinationPhotos } = useDestinationPhotos(destinationsList);
 
   // Fetch journey data
   useEffect(() => {
@@ -166,6 +177,7 @@ export default function JourneyPage() {
           const colors = getThemeColors(destination);
           const totalCards = destination.total_count;
           const totalRevealed = destination.revealed_count;
+          const destinationPhoto = destinationPhotos.get(destination.id);
 
           return (
             <motion.div
@@ -201,7 +213,7 @@ export default function JourneyPage() {
                   }
                 }}
                 disabled={totalCards === 0}
-                className={`w-full text-left p-5 rounded-xl border transition-all ${
+                className={`w-full text-left rounded-xl border transition-all overflow-hidden ${
                   isActive
                     ? "bg-white shadow-lg border-transparent"
                     : totalCards === 0
@@ -218,77 +230,92 @@ export default function JourneyPage() {
                 whileHover={totalCards > 0 ? { scale: 1.02 } : {}}
                 whileTap={totalCards > 0 ? { scale: 0.98 } : {}}
               >
-                {/* Destination header */}
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <MapPin
-                      className="w-5 h-5"
-                      style={{ color: colors.primary }}
-                    />
-                    <h2 className="font-serif text-xl text-[#2C1810]">
-                      {destination.name}
-                    </h2>
-                  </div>
-                  {isUpcoming ? (
-                    <Lock className="w-5 h-5 text-[#6B5344]/50" />
-                  ) : totalCards === 0 ? (
-                    <span className="text-xs text-[#6B5344]/50">No cards yet</span>
-                  ) : (
-                    <ChevronRight
-                      className="w-5 h-5"
-                      style={{ color: colors.primary }}
-                    />
-                  )}
-                </div>
-
-                {/* Country */}
-                {destination.country && (
-                  <p className="text-sm text-[#6B5344] mb-2">
-                    {destination.country}
-                  </p>
-                )}
-
-                {/* Date range */}
-                <div className="flex items-center gap-2 text-sm text-[#6B5344] mb-3">
-                  <Calendar className="w-4 h-4" />
-                  <span>
-                    {formatDateRange(destination.start_date, destination.end_date)}
-                  </span>
-                </div>
-
-                {/* Progress */}
-                {totalCards > 0 && (
-                  <>
-                    <div className="flex items-center gap-3">
-                      <div className="flex-1 h-2 bg-[#E5DDD5] rounded-full overflow-hidden">
-                        <motion.div
-                          className="h-full rounded-full"
-                          style={{
-                            background: `linear-gradient(90deg, ${colors.primary}, ${colors.secondary})`,
-                          }}
-                          initial={{ width: 0 }}
-                          animate={{
-                            width: `${(totalRevealed / totalCards) * 100}%`,
-                          }}
-                          transition={{ duration: 0.8, delay: 0.3 + idx * 0.1 }}
-                        />
+                <div className="flex">
+                  {/* Destination photo thumbnail */}
+                  <div
+                    className="w-24 md:w-32 flex-shrink-0 bg-cover bg-center"
+                    style={{
+                      backgroundImage: destinationPhoto?.imageUrl
+                        ? `url(${destinationPhoto.imageUrl})`
+                        : `linear-gradient(135deg, ${colors.primary}30, ${colors.secondary}30)`,
+                    }}
+                  >
+                    {!destinationPhoto?.imageUrl && (
+                      <div className="w-full h-full flex items-center justify-center">
+                        <MapPin className="w-8 h-8 text-white/60" style={{ color: colors.primary }} />
                       </div>
-                      <span className="text-sm text-[#6B5344]">
-                        {totalRevealed}/{totalCards}
+                    )}
+                  </div>
+
+                  {/* Card content */}
+                  <div className="flex-1 p-4">
+                    {/* Destination header */}
+                    <div className="flex items-start justify-between mb-2">
+                      <h2 className="font-serif text-lg md:text-xl text-[#2C1810]">
+                        {destination.name}
+                      </h2>
+                      {isUpcoming ? (
+                        <Lock className="w-5 h-5 text-[#6B5344]/50" />
+                      ) : totalCards === 0 ? (
+                        <span className="text-xs text-[#6B5344]/50">No cards</span>
+                      ) : (
+                        <ChevronRight
+                          className="w-5 h-5"
+                          style={{ color: colors.primary }}
+                        />
+                      )}
+                    </div>
+
+                    {/* Country */}
+                    {destination.country && (
+                      <p className="text-sm text-[#6B5344] mb-1">
+                        {destination.country}
+                      </p>
+                    )}
+
+                    {/* Date range */}
+                    <div className="flex items-center gap-2 text-xs text-[#6B5344] mb-2">
+                      <Calendar className="w-3 h-3" />
+                      <span>
+                        {formatDateRange(destination.start_date, destination.end_date)}
                       </span>
                     </div>
 
-                    {/* Humanized description */}
-                    <p className="mt-3 text-sm text-[#6B5344] italic">
-                      {totalRevealed === 0
-                        ? `Reveal ${journey.reveals_per_week} card${journey.reveals_per_week === 1 ? '' : 's'} per week • ${totalCards} experience${totalCards === 1 ? '' : 's'} await`
-                        : totalRevealed === totalCards
-                        ? `All ${totalCards} experience${totalCards === 1 ? '' : 's'} revealed!`
-                        : `${journey.reveals_per_week} reveal${journey.reveals_per_week === 1 ? '' : 's'} per week • ${totalCards - totalRevealed} more to discover`
-                      }
-                    </p>
-                  </>
-                )}
+                    {/* Progress */}
+                    {totalCards > 0 && (
+                      <>
+                        <div className="flex items-center gap-2">
+                          <div className="flex-1 h-1.5 bg-[#E5DDD5] rounded-full overflow-hidden">
+                            <motion.div
+                              className="h-full rounded-full"
+                              style={{
+                                background: `linear-gradient(90deg, ${colors.primary}, ${colors.secondary})`,
+                              }}
+                              initial={{ width: 0 }}
+                              animate={{
+                                width: `${(totalRevealed / totalCards) * 100}%`,
+                              }}
+                              transition={{ duration: 0.8, delay: 0.3 + idx * 0.1 }}
+                            />
+                          </div>
+                          <span className="text-xs text-[#6B5344]">
+                            {totalRevealed}/{totalCards}
+                          </span>
+                        </div>
+
+                        {/* Humanized description */}
+                        <p className="mt-2 text-xs text-[#6B5344] italic">
+                          {totalRevealed === 0
+                            ? `${totalCards} experience${totalCards === 1 ? '' : 's'} await`
+                            : totalRevealed === totalCards
+                            ? `All revealed!`
+                            : `${totalCards - totalRevealed} more to discover`
+                          }
+                        </p>
+                      </>
+                    )}
+                  </div>
+                </div>
               </motion.button>
             </motion.div>
           );

@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { verifyJourneyAccess, isJourneyAuthSuccess } from "@/lib/api/journey-auth";
-import { getCardsQuotaState } from "@/lib/api/reveal-quota";
 
 export async function GET(
   request: Request,
@@ -9,7 +8,7 @@ export async function GET(
 ) {
   const { slug, id: destinationId } = await params;
 
-  const result = await verifyJourneyAccess(slug, "id, name, is_published, curator_id, reveals_per_week, reveal_card_choices");
+  const result = await verifyJourneyAccess(slug, "id, name, is_published, curator_id");
   if (!isJourneyAuthSuccess(result)) {
     return result.response;
   }
@@ -17,8 +16,6 @@ export async function GET(
   const journey = result.journey as {
     id: string;
     name: string;
-    reveals_per_week?: number | null;
-    reveal_card_choices?: number | null;
   };
 
   const supabase = await createClient();
@@ -39,9 +36,8 @@ export async function GET(
     return NextResponse.json({ error: "Destination not found" }, { status: 404 });
   }
 
-  // Get approved cards for this destination in random order
-  // Using PostgreSQL's random() function for true server-side randomization
-  const { data: cards } = await supabase
+  // Get ONLY revealed cards for this destination
+  const { data: revealedCards } = await supabase
     .from("cards")
     .select(`
       id,
@@ -49,50 +45,45 @@ export async function GET(
       description,
       category,
       rarity,
-      is_revealed,
       picture_url,
       estimated_cost,
       duration_hours,
-      order_index,
-      reveal_date,
-      experience_date
+      experience_date,
+      revealed_at
     `)
     .eq("destination_id", destinationId)
     .eq("status", "approved")
-    .order("random", { ascending: true });
+    .eq("is_revealed", true)
+    .order("revealed_at", { ascending: false });
 
-  // Get quota state for cards
-  const cardsQuotaState = await getCardsQuotaState(
-    supabase,
-    journey.id,
-    (cards || []).map((c) => ({
-      id: c.id,
-      is_revealed: c.is_revealed ?? false,
-      reveal_date: c.reveal_date,
-    }))
-  );
+  // Get ONLY revealed treats for this destination (or journey-wide)
+  const { data: revealedTreats } = await supabase
+    .from("treats")
+    .select(`
+      id,
+      name,
+      description,
+      estimated_cost,
+      revealed_at
+    `)
+    .eq("journey_id", journey.id)
+    .eq("is_revealed", true)
+    .or(`destination_id.eq.${destinationId},destination_id.is.null`)
+    .order("revealed_at", { ascending: false });
 
-  // Convert Map to object for JSON serialization
-  const cardsQuotaStateObj: Record<string, any> = {};
-  for (const [cardId, state] of cardsQuotaState.entries()) {
-    cardsQuotaStateObj[cardId] = {
-      isRevealed: state.isRevealed,
-      canReveal: state.canReveal,
-    };
-  }
+  // Count total approved cards (for progress display)
+  const { count: totalCards } = await supabase
+    .from("cards")
+    .select("id", { count: "exact", head: true })
+    .eq("destination_id", destinationId)
+    .eq("status", "approved");
 
-  // Get current quota status
-  const weekAgo = new Date();
-  weekAgo.setDate(weekAgo.getDate() - 7);
-
-  const { count: revealsThisWeek } = await supabase
-    .from("reveals")
+  // Count total treats for destination
+  const { count: totalTreats } = await supabase
+    .from("treats")
     .select("id", { count: "exact", head: true })
     .eq("journey_id", journey.id)
-    .gte("revealed_at", weekAgo.toISOString());
-
-  const quotaLimit = journey.reveals_per_week || 2;
-  const revealsRemaining = Math.max(0, quotaLimit - (revealsThisWeek || 0));
+    .or(`destination_id.eq.${destinationId},destination_id.is.null`);
 
   // Get next destination in the journey (by start_date)
   const { data: nextDestination } = await supabase
@@ -105,27 +96,20 @@ export async function GET(
     .limit(1)
     .single();
 
-  // Count cards for next destination if it exists
-  let nextDestinationCardCount = 0;
-  if (nextDestination) {
-    const { count } = await supabase
-      .from("cards")
-      .select("*", { count: "exact", head: true })
-      .eq("destination_id", nextDestination.id)
-      .eq("status", "approved");
-    nextDestinationCardCount = count || 0;
-  }
-
   return NextResponse.json({
     ...destination,
     journey_name: journey.name,
-    cards: cards || [],
-    cardsQuotaState: cardsQuotaStateObj,
-    revealCardChoices: journey.reveal_card_choices || 1,
-    quotaInfo: {
-      revealsPerWeek: quotaLimit,
-      revealsThisWeek: revealsThisWeek || 0,
-      revealsRemaining,
+    revealedCards: revealedCards || [],
+    revealedTreats: revealedTreats || [],
+    progress: {
+      cards: {
+        revealed: revealedCards?.length || 0,
+        total: totalCards || 0,
+      },
+      treats: {
+        revealed: revealedTreats?.length || 0,
+        total: totalTreats || 0,
+      },
     },
     nextDestination: nextDestination
       ? {
@@ -134,7 +118,6 @@ export async function GET(
           country: nextDestination.country,
           start_date: nextDestination.start_date,
           end_date: nextDestination.end_date,
-          card_count: nextDestinationCardCount,
         }
       : null,
   });

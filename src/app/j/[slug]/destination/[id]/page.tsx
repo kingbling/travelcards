@@ -1,41 +1,43 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowLeft,
   MapPin,
   Calendar,
-  Lock,
   Sparkles,
-  Eye,
   Clock,
   Heart,
+  Gift,
 } from "lucide-react";
 import { CATEGORY_CONFIG, getThemeColors } from "@/types";
 import { useJourneyAuth } from "@/hooks/useJourneyAuth";
+import { useDestinationPhoto } from "@/hooks/useDestinationPhoto";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 import { ExperienceReveal } from "@/components/ExperienceReveal";
+import { TreatReveal } from "@/components/TreatReveal";
 
-interface Card {
+interface RevealedCard {
   id: string;
   name: string;
   description: string;
   category: string | null;
   rarity: string | null;
-  is_revealed: boolean;
   picture_url: string | null;
   estimated_cost: string | null;
   duration_hours: number | null;
-  reveal_date: string | null;
   experience_date: string | null;
-  order_index: number;
+  revealed_at: string | null;
 }
 
-interface CardQuotaState {
-  isRevealed: boolean;
-  canReveal: boolean;
+interface RevealedTreat {
+  id: string;
+  name: string;
+  description: string | null;
+  estimated_cost?: string | null;
+  revealed_at: string | null;
 }
 
 interface NextDestination {
@@ -44,13 +46,6 @@ interface NextDestination {
   country: string | null;
   start_date: string | null;
   end_date: string | null;
-  card_count: number;
-}
-
-interface QuotaInfo {
-  revealsPerWeek: number;
-  revealsThisWeek: number;
-  revealsRemaining: number;
 }
 
 interface DestinationData {
@@ -60,17 +55,41 @@ interface DestinationData {
   start_date: string | null;
   end_date: string | null;
   theme_colors: { primary?: string; secondary?: string } | null;
-  cards: Card[];
   journey_name: string;
-  cardsQuotaState: Record<string, CardQuotaState>;
-  revealCardChoices?: number;
-  quotaInfo: QuotaInfo;
+  revealedCards: RevealedCard[];
+  revealedTreats: RevealedTreat[];
+  progress: {
+    cards: { revealed: number; total: number };
+    treats: { revealed: number; total: number };
+  };
   nextDestination: NextDestination | null;
 }
 
-const RARITY_STYLES: Record<string, { bg: string; text: string; glow: string }> = {
-  common: { bg: "bg-gray-100", text: "text-gray-600", glow: "" },
-  uncommon: { bg: "bg-emerald-100", text: "text-emerald-600", glow: "" },
+interface RevealStatus {
+  cards: {
+    canReveal: boolean;
+    remaining: number;
+    perWeek: number;
+    available: number;
+    nextResetTime: string;
+    daysUntilReset: number;
+    preview: { picture_url: string | null } | null;
+  };
+  treats: {
+    canReveal: boolean;
+    remaining: number;
+    perWeek: number;
+    available: number;
+    unlocked: boolean;
+    nextResetTime: string;
+    daysUntilReset: number;
+  };
+}
+
+// Only show rare and legendary badges
+const RARITY_STYLES: Record<string, { bg: string; text: string; glow: string } | null> = {
+  common: null,
+  uncommon: null,
   rare: { bg: "bg-blue-100", text: "text-blue-600", glow: "shadow-blue-200" },
   legendary: { bg: "bg-amber-100", text: "text-amber-600", glow: "shadow-amber-200 shadow-lg" },
 };
@@ -82,118 +101,175 @@ export default function DestinationPage() {
   const destinationId = params.id as string;
 
   const [destination, setDestination] = useState<DestinationData | null>(null);
+  const [revealStatus, setRevealStatus] = useState<RevealStatus | null>(null);
   const [loading, setLoading] = useState(true);
-  const [revealingCard, setRevealingCard] = useState<Card | null>(null);
+  const [revealing, setRevealing] = useState<"card" | "treat" | null>(null);
+  const [revealedItem, setRevealedItem] = useState<RevealedCard | null>(null);
+  const [revealedTreat, setRevealedTreat] = useState<RevealedTreat | null>(null);
   const [showReveal, setShowReveal] = useState(false);
+  const [showTreatReveal, setShowTreatReveal] = useState(false);
+  const [viewingTreat, setViewingTreat] = useState<RevealedTreat | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [shuffledCards, setShuffledCards] = useState<Card[]>([]);
 
-  const { isAuthenticated, isLoading: authLoading } = useJourneyAuth({ slug });
+  const { isLoading: authLoading } = useJourneyAuth({ slug });
+
+  // Fetch destination photo (cached in DB after first fetch)
+  const { photo: destinationPhoto } = useDestinationPhoto({
+    destinationId: destinationId,
+    width: 1200,
+  });
 
   // Fetch destination data
   useEffect(() => {
-    async function fetchDestination() {
+    async function fetchData() {
       try {
-        const res = await fetch(`/api/journey/${slug}/destination/${destinationId}`);
-        if (res.ok) {
-          const data = await res.json();
-          setDestination(data);
+        const [destRes, statusRes] = await Promise.all([
+          fetch(`/api/journey/${slug}/destination/${destinationId}`),
+          fetch(`/api/journey/${slug}/reveal-status?destinationId=${destinationId}`),
+        ]);
+
+        if (destRes.ok) {
+          setDestination(await destRes.json());
         } else {
-          const errorData = await res.json().catch(() => ({ error: 'Unknown error' }));
-          console.error("[DESTINATION] Failed to fetch destination:", {
-            status: res.status,
-            error: errorData.error,
-            slug,
-            destinationId,
-          });
-          setError(errorData.error || "Failed to load destination");
+          setError("Failed to load destination");
+        }
+
+        if (statusRes.ok) {
+          setRevealStatus(await statusRes.json());
         }
       } catch (err) {
-        console.error("[DESTINATION] Network error fetching destination:", {
-          error: err,
-          slug,
-          destinationId,
-        });
-        setError("Network error. Please check your connection and try again.");
+        console.error("[DESTINATION] Error fetching data:", err);
+        setError("Network error. Please try again.");
       } finally {
         setLoading(false);
       }
     }
-    fetchDestination();
+    fetchData();
   }, [slug, destinationId]);
 
-  const handleRevealClick = (card: Card) => {
-    setRevealingCard(card);
-    setShowReveal(true);
-  };
-
-  const handleRevealComplete = async () => {
-    if (!revealingCard) return;
-
+  const handleRevealCard = async () => {
+    setRevealing("card");
     setError(null);
+
     try {
-      const res = await fetch(`/api/journey/${slug}/reveal`, {
+      const res = await fetch(`/api/journey/${slug}/reveal/card`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cardId: revealingCard.id }),
+        body: JSON.stringify({ destinationId }),
       });
 
       const data = await res.json();
 
       if (res.ok) {
-        // Clear stored shuffle after successful reveal - forces new shuffle on next visit
-        const storageKey = `shuffle-${slug}-${destinationId}`;
-        localStorage.removeItem(storageKey);
+        // Show reveal animation
+        setRevealedItem(data.card);
+        setShowReveal(true);
 
         // Update local state
         setDestination((prev) =>
           prev
             ? {
                 ...prev,
-                cards: prev.cards.map((c) =>
-                  c.id === revealingCard.id ? { ...c, is_revealed: true } : c
-                ),
-                cardsQuotaState: {
-                  ...prev.cardsQuotaState,
-                  [revealingCard.id]: {
-                    isRevealed: true,
-                    canReveal: false,
+                revealedCards: [data.card, ...prev.revealedCards],
+                progress: {
+                  ...prev.progress,
+                  cards: {
+                    ...prev.progress.cards,
+                    revealed: prev.progress.cards.revealed + 1,
                   },
                 },
               }
             : null
         );
 
-        // Close reveal modal after a short delay
-        setTimeout(() => {
-          setShowReveal(false);
-          setRevealingCard(null);
-        }, 1500);
+        // Update reveal status
+        setRevealStatus((prev) =>
+          prev
+            ? {
+                ...prev,
+                cards: {
+                  ...prev.cards,
+                  remaining: data.quota.remaining,
+                  canReveal: data.quota.remaining > 0 && prev.cards.available > 1,
+                  available: prev.cards.available - 1,
+                },
+                treats: {
+                  ...prev.treats,
+                  unlocked: true, // First card unlocks treats
+                  canReveal: prev.treats.remaining > 0 && prev.treats.available > 0, // Enable treat reveal
+                },
+              }
+            : null
+        );
       } else {
-        // Show error message
-        console.error("[DESTINATION] Reveal failed:", {
-          status: res.status,
-          error: data.error,
-          cardId: revealingCard.id,
-        });
-        setShowReveal(false);
-        setRevealingCard(null);
-        setError(data.error || "Failed to reveal card");
+        setError(data.error || "Failed to reveal");
       }
-    } catch (e) {
-      console.error("[DESTINATION] Network error during reveal:", {
-        error: e,
-        cardId: revealingCard.id,
-      });
-      setShowReveal(false);
-      setRevealingCard(null);
-      setError("Failed to reveal card. Please try again.");
+    } catch (err) {
+      console.error("[DESTINATION] Reveal error:", err);
+      setError("Failed to reveal. Please try again.");
+    } finally {
+      setRevealing(null);
     }
   };
 
-  // Get card quota state (server-provided)
-  const getCardQuotaState = (cardId: string): CardQuotaState | null => {
-    return destination?.cardsQuotaState?.[cardId] || null;
+  const handleRevealTreat = async () => {
+    setRevealing("treat");
+    setError(null);
+
+    try {
+      const res = await fetch(`/api/journey/${slug}/reveal/treat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ destinationId }),
+      });
+
+      const data = await res.json();
+
+      if (res.ok) {
+        // Show reveal animation
+        setRevealedTreat(data.treat);
+        setShowTreatReveal(true);
+
+        // Update local state
+        setDestination((prev) =>
+          prev
+            ? {
+                ...prev,
+                revealedTreats: [data.treat, ...prev.revealedTreats],
+                progress: {
+                  ...prev.progress,
+                  treats: {
+                    ...prev.progress.treats,
+                    revealed: prev.progress.treats.revealed + 1,
+                  },
+                },
+              }
+            : null
+        );
+
+        // Update reveal status
+        setRevealStatus((prev) =>
+          prev
+            ? {
+                ...prev,
+                treats: {
+                  ...prev.treats,
+                  remaining: data.quota.remaining,
+                  canReveal: data.quota.remaining > 0 && prev.treats.available > 1,
+                  available: prev.treats.available - 1,
+                },
+              }
+            : null
+        );
+      } else {
+        setError(data.error || "Failed to reveal treat");
+      }
+    } catch (err) {
+      console.error("[DESTINATION] Treat reveal error:", err);
+      setError("Failed to reveal treat. Please try again.");
+    } finally {
+      setRevealing(null);
+    }
   };
 
   const formatDateRange = (start: string | null, end: string | null) => {
@@ -204,104 +280,16 @@ export default function DestinationPage() {
     return `${startDate.toLocaleDateString("en-US", options)} - ${endDate.toLocaleDateString("en-US", options)}`;
   };
 
-  const formatTimeUntilReveal = (revealDate: string) => {
-    const reveal = new Date(revealDate);
+  const formatResetTime = (isoString: string) => {
+    const reset = new Date(isoString);
     const now = new Date();
-    const diffMs = reveal.getTime() - now.getTime();
-
-    if (diffMs <= 0) return null;
-
-    const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-    const hours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-
-    if (days > 0) {
-      return `${days}d ${hours}h`;
-    }
-    return `${hours}h`;
-  };
-
-  const formatRevealDate = (revealDate: string) => {
-    const reveal = new Date(revealDate);
-    const now = new Date();
-    const diffMs = reveal.getTime() - now.getTime();
+    const diffMs = reset.getTime() - now.getTime();
     const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
 
-    if (diffDays === 0) return "Today";
+    if (diffDays <= 0) return "Today";
     if (diffDays === 1) return "Tomorrow";
-    if (diffDays < 7) return `In ${diffDays} days`;
-
-    const weeks = Math.floor(diffDays / 7);
-    if (weeks === 1) return "In 1 week";
-    return `In ${weeks} weeks`;
+    return `in ${diffDays} days`;
   };
-
-  const formatDaysUntil = (date: string) => {
-    const targetDate = new Date(date);
-    const now = new Date();
-    const diffMs = targetDate.getTime() - now.getTime();
-    const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
-
-    if (diffDays <= 0) return "Starting soon";
-    if (diffDays === 1) return "Starts in 1 day";
-    if (diffDays < 7) return `Starts in ${diffDays} days`;
-
-    const weeks = Math.floor(diffDays / 7);
-    if (weeks === 1) return "Starts in 1 week";
-    return `Starts in ${weeks} weeks`;
-  };
-
-  // Shuffle and persist card order to localStorage
-  useEffect(() => {
-    if (!destination) return;
-
-    const hiddenCards = destination.cards.filter((c) => !c.is_revealed);
-    const revealableCards = hiddenCards.filter((card) => {
-      const state = destination.cardsQuotaState?.[card.id];
-      return state?.canReveal ?? false;
-    });
-
-    if (revealableCards.length === 0) {
-      setShuffledCards([]);
-      return;
-    }
-
-    // Check localStorage for existing shuffle
-    const storageKey = `shuffle-${slug}-${destinationId}`;
-    const stored = localStorage.getItem(storageKey);
-
-    if (stored) {
-      try {
-        const storedIds = JSON.parse(stored);
-        // Reconstruct cards in stored order (if they still exist and are revealable)
-        const reconstructed = storedIds
-          .map((id: string) => revealableCards.find((c) => c.id === id))
-          .filter((c: Card | undefined): c is Card => c !== undefined);
-
-        // If stored cards are valid and match current revealable set
-        if (reconstructed.length > 0 && reconstructed.length === revealableCards.length) {
-          setShuffledCards(reconstructed);
-          return;
-        }
-      } catch (e) {
-        // Invalid stored data, continue to fresh shuffle
-        console.debug("[DESTINATION] Invalid shuffle cache, regenerating:", {
-          error: e,
-          storageKey,
-        });
-      }
-    }
-
-    // Fresh shuffle (server already randomized, but we shuffle again for extra randomness)
-    const cards = [...revealableCards];
-    for (let i = cards.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [cards[i], cards[j]] = [cards[j], cards[i]];
-    }
-
-    // Store card IDs in localStorage
-    localStorage.setItem(storageKey, JSON.stringify(cards.map((c) => c.id)));
-    setShuffledCards(cards);
-  }, [destination, slug, destinationId]);
 
   const getColors = () => getThemeColors(destination?.theme_colors);
 
@@ -318,67 +306,80 @@ export default function DestinationPage() {
   }
 
   const colors = getColors();
-  const revealedCards = destination.cards.filter((c) => c.is_revealed);
-  const hiddenCards = destination.cards.filter((c) => !c.is_revealed);
-
-  // Limit displayed mystery cards to reveal_card_choices setting
-  const revealCardChoices = destination.revealCardChoices || 1;
-  const cardChoices = shuffledCards.slice(0, revealCardChoices);
-
-  // Separate locked cards into time-locked vs other
-  const now = new Date();
-  const timeLockedCards = hiddenCards.filter((card) => {
-    if (!card.reveal_date) return false;
-    const revealDate = new Date(card.reveal_date);
-    return revealDate > now;
-  }).sort((a, b) => {
-    const dateA = new Date(a.reveal_date!).getTime();
-    const dateB = new Date(b.reveal_date!).getTime();
-    return dateA - dateB;
-  });
-
-  const quotaLockedCards = hiddenCards.filter((card) => {
-    const state = getCardQuotaState(card.id);
-    if (!card.reveal_date) return false;
-    const revealDate = new Date(card.reveal_date);
-    return revealDate <= now && !state?.canReveal && !card.is_revealed;
-  });
-
-  const otherLockedCards = hiddenCards.filter((card) => {
-    return !card.reveal_date && !card.is_revealed;
-  });
 
   return (
-    <main className="min-h-screen bg-gradient-to-b from-[#FDF8F3] to-[#FAF0E6] px-6 py-8">
-      {/* Back button */}
-      <motion.button
-        onClick={() => router.push(`/j/${slug}/journey`)}
-        className="flex items-center gap-2 text-[#6B5344] hover:text-[#2C1810] mb-6"
-        initial={{ opacity: 0, x: -20 }}
-        animate={{ opacity: 1, x: 0 }}
+    <main className="min-h-screen bg-gradient-to-b from-[#FDF8F3] to-[#FAF0E6]">
+      {/* Hero Image Section */}
+      <motion.div
+        className="relative h-64 md:h-80 overflow-hidden"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
       >
-        <ArrowLeft className="w-4 h-4" />
-        Back to journey
-      </motion.button>
-
-      {/* Header */}
-      <motion.header
-        className="text-center mb-8"
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-      >
-        <div className="flex items-center justify-center gap-2 mb-2">
-          <MapPin className="w-6 h-6" style={{ color: colors.primary }} />
-          <h1 className="font-serif text-3xl text-[#2C1810]">{destination.name}</h1>
-        </div>
-        {destination.country && (
-          <p className="text-[#6B5344] mb-2">{destination.country}</p>
+        {/* Background Image */}
+        {destinationPhoto?.imageUrl ? (
+          <div
+            className="absolute inset-0 bg-cover bg-center"
+            style={{
+              backgroundImage: `url(${destinationPhoto.imageUrl})`,
+            }}
+          />
+        ) : (
+          <div
+            className="absolute inset-0"
+            style={{
+              background: `linear-gradient(135deg, ${colors.primary}40, ${colors.secondary}40)`,
+            }}
+          />
         )}
-        <div className="flex items-center justify-center gap-2 text-sm text-[#6B5344]">
-          <Calendar className="w-4 h-4" />
-          <span>{formatDateRange(destination.start_date, destination.end_date)}</span>
+        {/* Gradient overlay */}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent" />
+
+        {/* Back button */}
+        <motion.button
+          onClick={() => router.push(`/j/${slug}/journey`)}
+          className="absolute top-6 left-6 flex items-center gap-2 text-white/90 hover:text-white bg-black/20 hover:bg-black/30 px-3 py-2 rounded-full backdrop-blur-sm transition-all"
+          initial={{ opacity: 0, x: -20 }}
+          animate={{ opacity: 1, x: 0 }}
+        >
+          <ArrowLeft className="w-4 h-4" />
+          Back
+        </motion.button>
+
+        {/* Destination info overlay */}
+        <div className="absolute bottom-0 left-0 right-0 p-6 text-white">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+          >
+            <div className="flex items-center gap-2 mb-1">
+              <MapPin className="w-5 h-5" />
+              <h1 className="font-serif text-3xl md:text-4xl">{destination.name}</h1>
+            </div>
+            {destination.country && (
+              <p className="text-white/80 mb-2 text-lg">{destination.country}</p>
+            )}
+            <div className="flex items-center gap-2 text-sm text-white/70">
+              <Calendar className="w-4 h-4" />
+              <span>{formatDateRange(destination.start_date, destination.end_date)}</span>
+            </div>
+          </motion.div>
         </div>
-      </motion.header>
+
+        {/* Photo attribution */}
+        {destinationPhoto?.attribution && (
+          <a
+            href={destinationPhoto.attribution.link}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="absolute bottom-2 right-2 text-[10px] text-white/50 hover:text-white/80 transition-colors"
+          >
+            {destinationPhoto.attribution.text}
+          </a>
+        )}
+      </motion.div>
+
+      <div className="px-6 py-8">
 
       {/* Error message */}
       {error && (
@@ -391,62 +392,73 @@ export default function DestinationPage() {
         </motion.div>
       )}
 
-      {/* Available cards to reveal */}
-      {cardChoices.length > 0 && (
-        <section className="mb-10">
-          <div className="mb-4">
-            <h2 className="font-serif text-xl text-[#2C1810] mb-1 flex items-center gap-2">
-              <Sparkles className="w-5 h-5" style={{ color: colors.primary }} />
-              Available Now
-            </h2>
-            <p className="text-sm text-[#6B5344]">
-              {cardChoices.length === 1
-                ? `1 mystery experience • ${destination.quotaInfo.revealsRemaining} reveal${destination.quotaInfo.revealsRemaining === 1 ? '' : 's'} remaining this week`
-                : `${cardChoices.length} mystery experiences • ${destination.quotaInfo.revealsRemaining} reveal${destination.quotaInfo.revealsRemaining === 1 ? '' : 's'} remaining`}
-            </p>
-          </div>
-
-          <div className={`grid gap-4 ${cardChoices.length > 1 ? 'grid-cols-1 sm:grid-cols-2' : ''}`}>
-            {cardChoices.map((card, idx) => (
-              <button
-                key={card.id}
-                onClick={() => handleRevealClick(card)}
-                disabled={revealingCard !== null}
-                className="relative overflow-hidden rounded-2xl text-left w-full cursor-pointer hover:shadow-lg transition-shadow bg-white border-2"
+      {/* Reveal Actions */}
+      {revealStatus && (
+        <section className="mb-10 space-y-4">
+          {/* Experience Reveal */}
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+          >
+            <button
+              onClick={handleRevealCard}
+              disabled={!revealStatus.cards.canReveal || revealing !== null}
+              className="relative w-full rounded-2xl border-2 text-left transition-all overflow-hidden disabled:cursor-not-allowed"
+              style={{
+                borderColor: revealStatus.cards.canReveal ? colors.primary : "#ddd",
+              }}
+            >
+              {/* Background preview image */}
+              {revealStatus.cards.preview?.picture_url && (
+                <div
+                  className="absolute inset-0 opacity-20"
+                  style={{
+                    backgroundImage: `url(${revealStatus.cards.preview.picture_url})`,
+                    backgroundSize: "cover",
+                    backgroundPosition: "center",
+                    filter: "blur(8px)",
+                  }}
+                />
+              )}
+              <div
+                className="relative p-5"
                 style={{
-                  borderColor: colors.primary,
+                  background: revealStatus.cards.canReveal
+                    ? `linear-gradient(135deg, ${colors.primary}15, ${colors.secondary}15)`
+                    : "rgba(245,245,245,0.9)",
                 }}
               >
-                <div
-                  className="p-6"
-                  style={{
-                    background: `linear-gradient(135deg, ${colors.primary}08, ${colors.secondary}08)`,
-                  }}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                      <div
-                        className="w-14 h-14 rounded-xl flex items-center justify-center"
-                        style={{
-                          background: `linear-gradient(135deg, ${colors.primary}20, ${colors.secondary}20)`,
-                        }}
-                      >
-                        <Sparkles
-                          className="w-7 h-7"
-                          style={{ color: colors.primary }}
-                        />
-                      </div>
-
-                      <div>
-                        <p className="font-serif text-lg text-[#2C1810] mb-1">
-                          Mystery Experience
-                        </p>
-                        <p className="text-sm text-[#6B5344]">
-                          Tap to reveal
-                        </p>
-                      </div>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <div
+                      className="w-14 h-14 rounded-xl flex items-center justify-center"
+                      style={{
+                        background: revealStatus.cards.canReveal
+                          ? `linear-gradient(135deg, ${colors.primary}30, ${colors.secondary}30)`
+                          : "#eee",
+                      }}
+                    >
+                      <Sparkles
+                        className="w-7 h-7"
+                        style={{ color: revealStatus.cards.canReveal ? colors.primary : "#999" }}
+                      />
                     </div>
-
+                    <div>
+                      <p className="font-serif text-lg text-[#2C1810]">
+                        {revealing === "card" ? "Revealing..." : "Reveal Experience"}
+                      </p>
+                      <p className="text-sm text-[#6B5344]">
+                        {revealStatus.cards.canReveal ? (
+                          <>{revealStatus.cards.remaining} of {revealStatus.cards.perWeek} this week</>
+                        ) : revealStatus.cards.remaining === 0 ? (
+                          <>Next week: {revealStatus.cards.perWeek} new reveals</>
+                        ) : (
+                          <>No experiences available</>
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                  {revealStatus.cards.canReveal && (
                     <div
                       className="px-5 py-2.5 rounded-full text-white text-sm font-semibold shadow-md"
                       style={{
@@ -455,157 +467,213 @@ export default function DestinationPage() {
                     >
                       Reveal
                     </div>
-                  </div>
+                  )}
                 </div>
-              </button>
-            ))}
-          </div>
-        </section>
-      )}
+              </div>
+            </button>
+          </motion.div>
 
-      {/* No cards available message */}
-      {cardChoices.length === 0 && hiddenCards.length > 0 && (
-        <section className="mb-10">
-          <div
-            className="rounded-2xl p-6 border-2 text-center"
-            style={{
-              background: `linear-gradient(135deg, ${colors.primary}08, ${colors.secondary}08)`,
-              borderColor: colors.primary,
-            }}
+          {/* Treat Reveal */}
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
           >
-            <div
-              className="w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center"
-              style={{ background: `${colors.primary}20` }}
+            <button
+              onClick={handleRevealTreat}
+              disabled={!revealStatus.treats.canReveal || revealing !== null}
+              className="w-full p-5 rounded-2xl border-2 text-left transition-all disabled:cursor-not-allowed"
+              style={{
+                background: revealStatus.treats.canReveal
+                  ? `linear-gradient(135deg, ${colors.primary}10, ${colors.secondary}10)`
+                  : "#f5f5f5",
+                borderColor: revealStatus.treats.canReveal ? colors.primary : "#ddd",
+              }}
             >
-              <Clock className="w-8 h-8" style={{ color: colors.primary }} />
-            </div>
-            <h3 className="font-serif text-xl text-[#2C1810] mb-2">
-              {destination.quotaInfo.revealsRemaining === 0
-                ? "Weekly Quota Reached"
-                : "More Experiences Coming Soon"}
-            </h3>
-            <p className="text-sm text-[#6B5344]">
-              {destination.quotaInfo.revealsRemaining === 0
-                ? `You've revealed ${destination.quotaInfo.revealsThisWeek} of ${destination.quotaInfo.revealsPerWeek} cards this week • New cards unlock each week`
-                : `New mystery cards will unlock each week • ${destination.quotaInfo.revealsPerWeek} reveals per week`}
-            </p>
-          </div>
-        </section>
-      )}
-
-      {/* Time-locked cards - unlocking soon */}
-      {timeLockedCards.length > 0 && (
-        <section className="mb-10">
-          <div className="mb-4">
-            <h2 className="font-serif text-xl text-[#2C1810] mb-1 flex items-center gap-2">
-              <Clock className="w-5 h-5" style={{ color: colors.primary }} />
-              Unlocking Soon
-            </h2>
-            <p className="text-sm text-[#6B5344]">
-              {timeLockedCards.length} experience{timeLockedCards.length === 1 ? '' : 's'} scheduled to unlock
-            </p>
-          </div>
-          <div className="grid gap-3">
-            {timeLockedCards.slice(0, 5).map((card, idx) => {
-              const timeUntil = card.reveal_date ? formatTimeUntilReveal(card.reveal_date) : null;
-              const revealDateText = card.reveal_date ? formatRevealDate(card.reveal_date) : null;
-
-              return (
-                <motion.div
-                  key={card.id}
-                  className="relative overflow-hidden rounded-xl"
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: idx * 0.05 }}
-                >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
                   <div
-                    className="p-4 border-2 flex items-center justify-between"
+                    className="w-14 h-14 rounded-xl flex items-center justify-center"
                     style={{
-                      background: `linear-gradient(135deg, ${colors.primary}05, ${colors.secondary}05)`,
-                      borderColor: `${colors.primary}30`,
+                      background: revealStatus.treats.canReveal
+                        ? `linear-gradient(135deg, ${colors.primary}20, ${colors.secondary}20)`
+                        : "#eee",
                     }}
                   >
-                    <div className="flex items-center gap-3">
-                      <div
-                        className="w-10 h-10 rounded-lg flex items-center justify-center"
-                        style={{ background: `${colors.primary}15` }}
-                      >
-                        <Clock className="w-5 h-5" style={{ color: colors.primary }} />
-                      </div>
-                      <div>
-                        <p className="font-medium text-[#2C1810] text-sm">Mystery Experience</p>
-                        <p className="text-xs text-[#6B5344]">
-                          {revealDateText}
-                        </p>
-                      </div>
-                    </div>
-                    {timeUntil && (
-                      <div
-                        className="px-3 py-1.5 rounded-full text-xs font-semibold"
-                        style={{
-                          background: `${colors.primary}20`,
-                          color: colors.primary,
-                        }}
-                      >
-                        {timeUntil}
-                      </div>
-                    )}
+                    <Gift
+                      className="w-7 h-7"
+                      style={{ color: revealStatus.treats.canReveal ? colors.primary : "#999" }}
+                    />
                   </div>
-                </motion.div>
-              );
-            })}
-            {timeLockedCards.length > 5 && (
-              <p className="text-sm text-[#6B5344] text-center py-2">
-                +{timeLockedCards.length - 5} more unlocking later
-              </p>
+                  <div>
+                    <p className="font-serif text-lg text-[#2C1810]">
+                      {revealing === "treat" ? "Revealing..." : "Reveal Treat"}
+                    </p>
+                    <p className="text-sm text-[#6B5344]">
+                      {!revealStatus.treats.unlocked ? (
+                        "Unlock by revealing your first experience"
+                      ) : revealStatus.treats.canReveal ? (
+                        <>{revealStatus.treats.remaining} of {revealStatus.treats.perWeek} this week</>
+                      ) : revealStatus.treats.remaining === 0 ? (
+                        <>Next week: {revealStatus.treats.perWeek} new treat{revealStatus.treats.perWeek > 1 ? "s" : ""}</>
+                      ) : (
+                        <>No treats available</>
+                      )}
+                    </p>
+                  </div>
+                </div>
+                {revealStatus.treats.canReveal && (
+                  <div
+                    className="px-5 py-2.5 rounded-full text-white text-sm font-semibold shadow-md"
+                    style={{
+                      background: `linear-gradient(135deg, ${colors.primary}, ${colors.secondary})`,
+                    }}
+                  >
+                    Reveal
+                  </div>
+                )}
+              </div>
+            </button>
+          </motion.div>
+
+          {/* Progress */}
+          <div className="text-center text-sm text-[#6B5344]">
+            {destination.progress.cards.revealed} / {destination.progress.cards.total} experiences
+            {destination.progress.treats.total > 0 && (
+              <span> • {destination.progress.treats.revealed} / {destination.progress.treats.total} treats</span>
             )}
           </div>
         </section>
       )}
 
-      {/* Quota-locked cards - waiting for weekly quota */}
-      {quotaLockedCards.length > 0 && cardChoices.length === 0 && (
+      {/* Revealed Treats */}
+      {destination.revealedTreats.length > 0 && (
         <section className="mb-10">
           <div className="mb-4">
             <h2 className="font-serif text-xl text-[#2C1810] mb-1 flex items-center gap-2">
-              <Lock className="w-5 h-5 text-[#6B5344]" />
-              Waiting for Quota
+              <Gift className="w-5 h-5" style={{ color: colors.primary }} />
+              Your Treats
             </h2>
-            <p className="text-sm text-[#6B5344]">
-              {quotaLockedCards.length} experience{quotaLockedCards.length === 1 ? '' : 's'} ready but weekly quota reached
-            </p>
           </div>
           <div className="grid gap-3">
-            {quotaLockedCards.slice(0, 3).map((card, idx) => (
-              <motion.div
-                key={card.id}
-                className="relative overflow-hidden rounded-xl"
+            {destination.revealedTreats.map((treat) => (
+              <motion.button
+                key={treat.id}
+                onClick={() => setViewingTreat(treat)}
+                className="p-4 border-2 rounded-xl flex items-center gap-3 text-left hover:shadow-md transition-shadow"
+                style={{
+                  background: `linear-gradient(135deg, ${colors.primary}10, ${colors.secondary}10)`,
+                  borderColor: `${colors.primary}40`,
+                }}
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: idx * 0.05 }}
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
               >
                 <div
-                  className="p-4 border border-[#E5DDD5] flex items-center justify-between"
-                  style={{
-                    background: `linear-gradient(135deg, ${colors.primary}05, ${colors.secondary}05)`,
-                  }}
+                  className="w-10 h-10 rounded-lg flex items-center justify-center"
+                  style={{ background: `${colors.primary}20` }}
                 >
-                  <div className="flex items-center gap-3">
-                    <div
-                      className="w-10 h-10 rounded-lg flex items-center justify-center"
-                      style={{ background: `${colors.primary}10` }}
-                    >
-                      <Lock className="w-4 h-4 text-[#6B5344]" />
-                    </div>
-                    <div>
-                      <p className="font-medium text-[#2C1810] text-sm">Mystery Experience</p>
-                      <p className="text-xs text-[#6B5344]">Available next week</p>
-                    </div>
-                  </div>
+                  <Gift className="w-5 h-5" style={{ color: colors.primary }} />
                 </div>
-              </motion.div>
+                <div className="flex-1">
+                  <p className="font-medium text-[#2C1810] text-sm">{treat.name}</p>
+                  {treat.description && (
+                    <p className="text-xs text-[#6B5344] line-clamp-2">{treat.description}</p>
+                  )}
+                </div>
+              </motion.button>
             ))}
           </div>
+        </section>
+      )}
+
+      {/* Revealed Cards Collection */}
+      {destination.revealedCards.length > 0 && (
+        <section className="mb-10">
+          <div className="mb-4">
+            <h2 className="font-serif text-xl text-[#2C1810] mb-1 flex items-center gap-2">
+              <Heart className="w-5 h-5" style={{ color: colors.primary }} />
+              Your Experiences
+            </h2>
+          </div>
+          <div className="grid gap-4">
+            <AnimatePresence>
+              {destination.revealedCards.map((card, idx) => {
+                const rarity = card.rarity || "common";
+                const styles = RARITY_STYLES[rarity]; // null for common/uncommon
+                const categoryConfig = card.category
+                  ? CATEGORY_CONFIG[card.category as keyof typeof CATEGORY_CONFIG]
+                  : null;
+                const icon = categoryConfig?.icon || "✨";
+
+                return (
+                  <motion.button
+                    key={card.id}
+                    onClick={() => router.push(`/j/${slug}/card/${card.id}`)}
+                    className={`text-left overflow-hidden rounded-2xl bg-white shadow-sm border border-[#E5DDD5] hover:shadow-md transition-shadow ${styles?.glow || ""}`}
+                    initial={{ opacity: 0, scale: 0.9 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ delay: idx * 0.05 }}
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                  >
+                    <div className="flex">
+                      <div
+                        className="w-24 h-24 flex-shrink-0 flex items-center justify-center text-3xl"
+                        style={{
+                          background: card.picture_url
+                            ? `url(${card.picture_url}) center/cover`
+                            : `linear-gradient(135deg, ${colors.primary}20, ${colors.secondary}20)`,
+                        }}
+                      >
+                        {!card.picture_url && icon}
+                      </div>
+                      <div className="flex-1 p-4">
+                        <div className="flex items-start justify-between mb-1">
+                          <h3 className="font-medium text-[#2C1810] line-clamp-1">
+                            {card.name}
+                          </h3>
+                          {/* Only show badge for rare/legendary */}
+                          {styles && (
+                            <span className={`text-xs px-2 py-0.5 rounded-full ${styles.bg} ${styles.text}`}>
+                              {rarity}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-sm text-[#6B5344] line-clamp-2">
+                          {card.description}
+                        </p>
+                        {card.duration_hours && (
+                          <div className="flex items-center gap-3 mt-2 text-xs text-[#6B5344]">
+                            <span>{card.duration_hours}h</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </motion.button>
+                );
+              })}
+            </AnimatePresence>
+          </div>
+        </section>
+      )}
+
+      {/* Empty state */}
+      {destination.revealedCards.length === 0 && destination.revealedTreats.length === 0 && (
+        <section className="text-center py-12">
+          <div
+            className="w-20 h-20 mx-auto mb-4 rounded-full flex items-center justify-center"
+            style={{ background: `${colors.primary}20` }}
+          >
+            <Sparkles className="w-10 h-10" style={{ color: colors.primary }} />
+          </div>
+          <h2 className="font-serif text-2xl text-[#2C1810] mb-2">
+            Start Your Adventure
+          </h2>
+          <p className="text-[#6B5344]">
+            Tap "Reveal Experience" to discover your first surprise
+          </p>
         </section>
       )}
 
@@ -644,150 +712,110 @@ export default function DestinationPage() {
                     </span>
                   )}
                 </div>
-
-                <div className="grid gap-2 text-sm">
-                  <div className="flex items-center gap-2 text-[#6B5344]">
-                    <Calendar className="w-4 h-4" />
-                    <span>
-                      {formatDateRange(
-                        destination.nextDestination.start_date,
-                        destination.nextDestination.end_date
-                      )}
-                    </span>
-                  </div>
-
-                  {destination.nextDestination.start_date && (
-                    <div className="flex items-center gap-2 text-[#6B5344]">
-                      <Clock className="w-4 h-4" />
-                      <span>{formatDaysUntil(destination.nextDestination.start_date)}</span>
-                    </div>
-                  )}
-
-                  <div className="flex items-center gap-2 mt-2">
-                    <div
-                      className="px-3 py-1.5 rounded-full text-sm font-medium"
-                      style={{
-                        background: `${colors.primary}20`,
-                        color: colors.primary,
-                      }}
-                    >
-                      <Sparkles className="w-3.5 h-3.5 inline mr-1" />
-                      {destination.nextDestination.card_count} new experiences
-                    </div>
-                  </div>
+                <div className="flex items-center gap-2 text-sm text-[#6B5344]">
+                  <Calendar className="w-4 h-4" />
+                  <span>
+                    {formatDateRange(
+                      destination.nextDestination.start_date,
+                      destination.nextDestination.end_date
+                    )}
+                  </span>
                 </div>
-
-                <p className="text-xs text-[#6B5344] mt-4 italic">
-                  Continue your journey with new experiences in {destination.nextDestination.name}
-                </p>
               </div>
             </div>
           </div>
         </motion.section>
       )}
+      </div>
 
-      {/* Revealed cards */}
-      {revealedCards.length > 0 && (
-        <section>
-          <div className="mb-4">
-            <h2 className="font-serif text-xl text-[#2C1810] mb-1 flex items-center gap-2">
-              <Heart className="w-5 h-5" style={{ color: colors.primary }} />
-              Your Collection
-            </h2>
-            <p className="text-sm text-[#6B5344]">
-              {revealedCards.length} experience{revealedCards.length === 1 ? '' : 's'} revealed
-            </p>
-          </div>
-          <div className="grid gap-4">
-            <AnimatePresence>
-              {revealedCards.map((card, idx) => {
-                const rarity = card.rarity || "common";
-                const styles = RARITY_STYLES[rarity] || RARITY_STYLES.common;
-                const categoryConfig = card.category ? CATEGORY_CONFIG[card.category as keyof typeof CATEGORY_CONFIG] : null;
-                const icon = categoryConfig?.icon || "✨";
-
-                return (
-                  <motion.button
-                    key={card.id}
-                    onClick={() => router.push(`/j/${slug}/card/${card.id}`)}
-                    className={`text-left overflow-hidden rounded-2xl bg-white shadow-sm border border-[#E5DDD5] hover:shadow-md transition-shadow ${styles.glow}`}
-                    initial={{ opacity: 0, scale: 0.9 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    transition={{ delay: idx * 0.05 }}
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                  >
-                    <div className="flex">
-                      {/* Image or icon */}
-                      <div
-                        className="w-24 h-24 flex-shrink-0 flex items-center justify-center text-3xl"
-                        style={{
-                          background: card.picture_url
-                            ? `url(${card.picture_url}) center/cover`
-                            : `linear-gradient(135deg, ${colors.primary}20, ${colors.secondary}20)`,
-                        }}
-                      >
-                        {!card.picture_url && icon}
-                      </div>
-
-                      {/* Content */}
-                      <div className="flex-1 p-4">
-                        <div className="flex items-start justify-between mb-1">
-                          <h3 className="font-medium text-[#2C1810] line-clamp-1">
-                            {card.name}
-                          </h3>
-                          <span className={`text-xs px-2 py-0.5 rounded-full ${styles.bg} ${styles.text}`}>
-                            {rarity}
-                          </span>
-                        </div>
-                        <p className="text-sm text-[#6B5344] line-clamp-2">
-                          {card.description}
-                        </p>
-                        {card.duration_hours && (
-                          <div className="flex items-center gap-3 mt-2 text-xs text-[#6B5344]">
-                            <span>{card.duration_hours}h</span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </motion.button>
-                );
-              })}
-            </AnimatePresence>
-          </div>
-        </section>
-      )}
-
-      {/* Empty state */}
-      {destination.cards.length === 0 && (
-        <section className="text-center py-16">
-          <div
-            className="w-20 h-20 mx-auto mb-4 rounded-full flex items-center justify-center"
-            style={{ background: `${colors.primary}20` }}
-          >
-            <Sparkles className="w-10 h-10" style={{ color: colors.primary }} />
-          </div>
-          <h2 className="font-serif text-2xl text-[#2C1810] mb-2">
-            Experiences Coming Soon
-          </h2>
-          <p className="text-[#6B5344]">
-            Your curator is preparing something special
-          </p>
-        </section>
-      )}
-
-      {/* Reveal Modal */}
-      {showReveal && revealingCard && (
+      {/* Experience Reveal Modal */}
+      {showReveal && revealedItem && (
         <ExperienceReveal
-          card={revealingCard}
+          card={revealedItem}
           themeColors={colors}
-          onComplete={handleRevealComplete}
+          onComplete={() => {
+            setShowReveal(false);
+            setRevealedItem(null);
+          }}
           onClose={() => {
             setShowReveal(false);
-            setRevealingCard(null);
+            setRevealedItem(null);
           }}
         />
       )}
+
+      {/* Treat Reveal Modal */}
+      {showTreatReveal && revealedTreat && (
+        <TreatReveal
+          treat={revealedTreat}
+          themeColors={colors}
+          onComplete={() => {
+            setShowTreatReveal(false);
+            setRevealedTreat(null);
+          }}
+          onClose={() => {
+            setShowTreatReveal(false);
+            setRevealedTreat(null);
+          }}
+        />
+      )}
+
+      {/* View Treat Modal */}
+      <AnimatePresence>
+        {viewingTreat && (
+          <motion.div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-6"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setViewingTreat(null)}
+          >
+            <motion.div
+              className="bg-white rounded-3xl max-w-sm w-full overflow-hidden shadow-2xl"
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 20 }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div
+                className="py-8 flex flex-col items-center"
+                style={{
+                  background: `linear-gradient(135deg, ${colors.primary}20, ${colors.secondary}20)`,
+                }}
+              >
+                <Gift className="w-16 h-16" style={{ color: colors.primary }} />
+                <div
+                  className="mt-3 px-4 py-1.5 rounded-full text-sm font-bold uppercase tracking-wide"
+                  style={{
+                    backgroundColor: `${colors.primary}20`,
+                    color: colors.primary,
+                  }}
+                >
+                  Your Treat
+                </div>
+              </div>
+
+              {/* Content */}
+              <div className="p-6 text-center">
+                <h3 className="font-serif text-2xl text-[#2C1810] mb-3">{viewingTreat.name}</h3>
+                {viewingTreat.description && (
+                  <p className="text-[#6B5344] mb-4 leading-relaxed">{viewingTreat.description}</p>
+                )}
+                <button
+                  onClick={() => setViewingTreat(null)}
+                  className="px-8 py-3 rounded-full text-white font-medium"
+                  style={{
+                    background: `linear-gradient(135deg, ${colors.primary}, ${colors.secondary})`,
+                  }}
+                >
+                  Close
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </main>
   );
 }

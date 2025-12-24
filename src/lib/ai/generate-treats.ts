@@ -22,7 +22,7 @@ export interface TreatGenerationContext {
   recipientName: string | null;
   recipientGender: "male" | "female" | "neutral"; // Inferred from name
   travelers: TravelerForTreat[];
-  destination: DestinationForTreat; // Single destination for context-specific treats
+  destination: DestinationForTreat | null; // Null for global/journey-wide treats
   existingTreats: string[]; // Names for deduplication
 }
 
@@ -85,7 +85,7 @@ export function buildTreatContext(input: {
     name: string;
     country: string | null;
     destination_type: string;
-  };
+  } | null;
 }): TreatGenerationContext {
   return {
     journeyName: input.journeyName,
@@ -96,11 +96,11 @@ export function buildTreatContext(input: {
       age: p.age,
       interests: p.interests || [],
     })),
-    destination: {
+    destination: input.destination ? {
       name: input.destination.name,
       country: input.destination.country,
       destination_type: input.destination.destination_type,
-    },
+    } : null,
     existingTreats: [], // Could fetch from DB if needed for deduplication
   };
 }
@@ -118,14 +118,20 @@ export function buildTreatPrompt(context: TreatGenerationContext, count: number)
     })
     .join("\n");
 
-  const countryContext = context.destination.country
-    ? `${context.destination.name}, ${context.destination.country}`
-    : context.destination.name;
+  const countryContext = context.destination
+    ? (context.destination.country
+      ? `${context.destination.name}, ${context.destination.country}`
+      : context.destination.name)
+    : null;
+
+  const destinationLine = context.destination
+    ? `DESTINATION: ${countryContext} (${context.destination.destination_type})`
+    : `SCOPE: Journey-wide (not location-specific)`;
 
   return `
 JOURNEY: ${context.journeyName}
 RECIPIENT: ${context.recipientName || "Traveler"}
-DESTINATION: ${countryContext} (${context.destination.destination_type})
+${destinationLine}
 
 TRAVELERS:
 ${travelersSection}
@@ -162,7 +168,7 @@ Simple pampering:
 - "Get fresh pastries brought to your room"
 - "Sleep in while someone else handles the kids"
 
-Use your knowledge of ${countryContext} to make treats specific (e.g., mention actual local dishes, drinks, or customs where natural).
+${countryContext ? `Use your knowledge of ${countryContext} to make treats specific (e.g., mention actual local dishes, drinks, or customs where natural).` : `These treats should be universal and not tied to a specific location - think pleasures that work anywhere on the journey.`}
 
 BAD EXAMPLES (these are activities, NOT treats):
 - "Visit the penguin colony at Boulders Beach" (that's an excursion)

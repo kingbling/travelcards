@@ -11,9 +11,16 @@ export const maxDuration = 120;
 
 const anthropic = new Anthropic();
 
-// Cost per million tokens (Claude Sonnet with extended thinking)
+// Cost per million tokens (Claude Sonnet 4.5 with extended thinking)
 const INPUT_COST_PER_MILLION = 3.0;
 const OUTPUT_COST_PER_MILLION = 15.0;
+
+// Web search tool definition
+const WEB_SEARCH_TOOL = {
+  type: "web_search_20250305" as const,
+  name: "web_search" as const,
+  max_uses: 2,
+};
 
 export async function POST(
   request: Request,
@@ -52,19 +59,14 @@ export async function POST(
       return NextResponse.json({ error: "Journey not found" }, { status: 404 });
     }
 
-    // Get destination for context
-    let destination;
+    // Get destination for context (null for global treats)
+    let destination = null;
     if (destinationId) {
-      destination = journey.destinations?.find((d: { id: string }) => d.id === destinationId);
-      if (!destination) {
+      const foundDest = journey.destinations?.find((d: { id: string }) => d.id === destinationId);
+      if (!foundDest) {
         return NextResponse.json({ error: "Destination not found" }, { status: 404 });
       }
-    } else {
-      destination = journey.destinations?.[0] || {
-        name: "Travel destination",
-        country: null,
-        destination_type: "city",
-      };
+      destination = foundDest;
     }
 
     // Build context for AI
@@ -77,11 +79,11 @@ export async function POST(
         age: p.age,
         interests: p.interests || [],
       })),
-      destination: {
+      destination: destination ? {
         name: destination.name,
         country: destination.country,
         destination_type: destination.destination_type || "city",
-      },
+      } : null,
       existingTreats: [],
     };
 
@@ -94,47 +96,104 @@ export async function POST(
       const encoder = new TextEncoder();
       const readable = new ReadableStream({
         async start(controller) {
+          let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
+
+          // Helper to send SSE log events
+          const streamLog = (level: string, source: string, message: string) => {
+            const timestamp = new Date().toISOString();
+            treatsLogger.info(`[${source}] ${message}`);
+            try {
+              controller.enqueue(
+                encoder.encode(`data: ${JSON.stringify({
+                  type: "log",
+                  timestamp,
+                  level,
+                  source,
+                  message
+                })}\n\n`)
+              );
+            } catch {
+              // Controller may be closed
+            }
+          };
+
           try {
-            // Call Claude with extended thinking and streaming
-            const response = await anthropic.messages.create({
+            // Send init event with prompt
+            const locationMsg = destination ? destination.name : "entire journey";
+            streamLog("info", "TREATS", `Generating ${treatCount} treats for ${locationMsg}`);
+            controller.enqueue(
+              encoder.encode(`data: ${JSON.stringify({
+                type: "init",
+                prompt,
+                destination: destination ? {
+                  name: destination.name,
+                  country: destination.country,
+                } : null,
+              })}\n\n`)
+            );
+
+            streamLog("info", "AI", `Calling Claude ${AI_CONFIG.MODEL} with web search...`);
+
+            // Start heartbeat to keep connection alive
+            heartbeatInterval = setInterval(() => {
+              try {
+                controller.enqueue(
+                  encoder.encode(`data: ${JSON.stringify({ type: "heartbeat", timestamp: Date.now() })}\n\n`)
+                );
+              } catch {
+                if (heartbeatInterval) clearInterval(heartbeatInterval);
+              }
+            }, 30000);
+
+            // Call Claude with extended thinking, streaming, and web search
+            const stream = anthropic.messages.stream({
               model: AI_CONFIG.MODEL,
               max_tokens: 16000,
               thinking: {
                 type: "enabled",
-                budget_tokens: 8000,
+                budget_tokens: 5000,
               },
+              tools: [WEB_SEARCH_TOOL],
               messages: [{ role: "user", content: prompt }],
-              stream: true,
             });
 
-            let thinkingContent = "";
             let textContent = "";
-            let inputTokens = 0;
-            let outputTokens = 0;
 
-            for await (const event of response) {
+            stream.on("text", (text) => {
+              textContent += text;
+              // Stream output as it's generated
+              controller.enqueue(
+                encoder.encode(`data: ${JSON.stringify({ type: "output", content: text })}\n\n`)
+              );
+            });
+
+            // Process raw events for thinking
+            for await (const event of stream) {
               if (event.type === "content_block_delta") {
                 const delta = event.delta;
                 if ("thinking" in delta && delta.thinking) {
-                  thinkingContent += delta.thinking;
-                  // Stream thinking content
                   controller.enqueue(
                     encoder.encode(`data: ${JSON.stringify({ type: "thinking", content: delta.thinking })}\n\n`)
                   );
-                } else if ("text" in delta && delta.text) {
-                  textContent += delta.text;
                 }
-              } else if (event.type === "message_delta" && event.usage) {
-                outputTokens = event.usage.output_tokens;
-              } else if (event.type === "message_start" && event.message.usage) {
-                inputTokens = event.message.usage.input_tokens;
               }
             }
 
+            // Get final message for usage stats
+            const finalMessage = await stream.finalMessage();
+
+            // Clear heartbeat
+            if (heartbeatInterval) clearInterval(heartbeatInterval);
+
+            streamLog("info", "AI", `Generation complete. Parsing treats...`);
+
             // Parse the generated treats
             const generatedTreats = parseTreatsResponse(textContent);
+            streamLog("info", "TREATS", `Parsed ${generatedTreats.length} treats`);
 
             // Calculate usage
+            const inputTokens = finalMessage.usage.input_tokens;
+            const outputTokens = finalMessage.usage.output_tokens;
             const totalTokens = inputTokens + outputTokens;
             const costUsd = (inputTokens / 1_000_000) * INPUT_COST_PER_MILLION +
                            (outputTokens / 1_000_000) * OUTPUT_COST_PER_MILLION;
@@ -155,6 +214,7 @@ export async function POST(
 
             controller.close();
           } catch (error) {
+            if (heartbeatInterval) clearInterval(heartbeatInterval);
             treatsLogger.error("Streaming error:", error);
             controller.enqueue(
               encoder.encode(`data: ${JSON.stringify({

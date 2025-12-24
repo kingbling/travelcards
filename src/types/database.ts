@@ -155,6 +155,8 @@ export type Database = {
       destinations: {
         Row: {
           country: string | null
+          cover_photo_url: string | null
+          cover_photo_attribution: Json | null
           created_at: string | null
           destination_type: string | null
           end_date: string | null
@@ -163,13 +165,17 @@ export type Database = {
           journey_id: string | null
           name: string
           order_index: number | null
+          reveals_per_week: number | null
           start_date: string | null
           start_location: string | null
           theme_colors: Json | null
           transport_mode: string | null
+          treats_per_week: number | null
         }
         Insert: {
           country?: string | null
+          cover_photo_url?: string | null
+          cover_photo_attribution?: Json | null
           created_at?: string | null
           destination_type?: string | null
           end_date?: string | null
@@ -178,13 +184,17 @@ export type Database = {
           journey_id?: string | null
           name: string
           order_index?: number | null
+          reveals_per_week?: number | null
           start_date?: string | null
           start_location?: string | null
           theme_colors?: Json | null
           transport_mode?: string | null
+          treats_per_week?: number | null
         }
         Update: {
           country?: string | null
+          cover_photo_url?: string | null
+          cover_photo_attribution?: Json | null
           created_at?: string | null
           destination_type?: string | null
           end_date?: string | null
@@ -193,10 +203,12 @@ export type Database = {
           journey_id?: string | null
           name?: string
           order_index?: number | null
+          reveals_per_week?: number | null
           start_date?: string | null
           start_location?: string | null
           theme_colors?: Json | null
           transport_mode?: string | null
+          treats_per_week?: number | null
         }
         Relationships: [
           {

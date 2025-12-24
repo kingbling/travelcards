@@ -76,60 +76,46 @@ export async function POST(
 
     resetLogger.info(`Deleted ${revealCount || 0} reveal records for journey ${journeyId}`);
 
-    // 6. Calculate simple progressive reveal dates
-    // Each card gets a reveal_date based on its position and reveals_per_week setting
-    const { data: journeyData } = await supabase
-      .from("journeys")
-      .select("reveals_per_week, advance_reveal_days")
-      .eq("id", journeyId)
-      .single();
-
-    const revealsPerWeek = journeyData?.reveals_per_week || 2;
-    const advanceRevealDays = journeyData?.advance_reveal_days || 7;
-
-    // Sort cards by order_index to assign progressive dates
-    const sortedCardIds = [...cardIds];
-    const { data: cardsData } = await supabase
+    // 6. Reset all cards - just clear is_revealed, no date assignments
+    // All cards participate in the random raffle when revealing
+    const { error: cardsError } = await serviceClient
       .from("cards")
-      .select("id, order_index")
+      .update({
+        is_revealed: false,
+        revealed_at: null,
+      })
       .in("id", cardIds);
 
-    if (cardsData) {
-      sortedCardIds.sort((a, b) => {
-        const cardA = cardsData.find(c => c.id === a);
-        const cardB = cardsData.find(c => c.id === b);
-        return (cardA?.order_index || 0) - (cardB?.order_index || 0);
-      });
-    }
-
-    // Assign reveal dates: First revealsPerWeek cards get week 1, next revealsPerWeek get week 2, etc.
-    const now = new Date();
-    const updatePromises = sortedCardIds.map((cardId, index) => {
-      const weekNumber = Math.floor(index / revealsPerWeek);
-      const revealDate = new Date(now);
-      revealDate.setDate(revealDate.getDate() + (weekNumber * 7));
-
-      return supabase
-        .from("cards")
-        .update({
-          is_revealed: false,
-          revealed_at: null,
-          reveal_date: revealDate.toISOString().split('T')[0],
-        })
-        .eq("id", cardId);
-    });
-
-    const results = await Promise.all(updatePromises);
-    const errors = results.filter(r => r.error);
-
-    if (errors.length > 0) {
-      resetLogger.error("Failed to update cards:", errors);
+    if (cardsError) {
+      resetLogger.error("Failed to reset cards:", cardsError);
       return NextResponse.json({
-        error: "Failed to update cards"
+        error: "Failed to reset cards"
       }, { status: 500 });
     }
 
-    // 7. Reset all treats for this journey
+    resetLogger.info(`Reset ${cardIds.length} cards to unrevealed state`);
+
+    // 7. Delete all treat_reveals records for this journey
+    const { count: treatRevealCount } = await serviceClient
+      .from("treat_reveals")
+      .select("id", { count: "exact", head: true })
+      .eq("journey_id", journeyId);
+
+    const { error: deleteTreatRevealsError } = await serviceClient
+      .from("treat_reveals")
+      .delete()
+      .eq("journey_id", journeyId);
+
+    if (deleteTreatRevealsError) {
+      resetLogger.error("Failed to delete treat_reveals:", deleteTreatRevealsError);
+      return NextResponse.json({
+        error: "Failed to reset treat reveals"
+      }, { status: 500 });
+    }
+
+    resetLogger.info(`Deleted ${treatRevealCount || 0} treat_reveal records for journey ${journeyId}`);
+
+    // 8. Reset all treats for this journey
     const { count: treatsCount } = await serviceClient
       .from("treats")
       .select("id", { count: "exact" })

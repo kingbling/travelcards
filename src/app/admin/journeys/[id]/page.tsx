@@ -27,6 +27,7 @@ interface JourneyWithRelations {
   unique_slug: string | null;
   access_code: string | null;
   is_published: boolean;
+  treats_per_week: number | null;
   participants: Participant[] | null;
   destinations: (Destination & { cards: Card[] | null; treats: Treat[] | null })[] | null;
   love_letters: LoveLetter[] | null;
@@ -54,11 +55,29 @@ export default async function JourneyManagePage({ params }: Props) {
         treats:treats!destination_id(*)
       ),
       love_letters(*),
-      treats(*)
+      treats!journey_id(*)
     `)
     .eq("id", id)
     .eq("curator_id", user.id)
     .single();
+
+  // Get treat reveals this week for quota calculation
+  const getWeekStart = () => {
+    const now = new Date();
+    const dayOfWeek = now.getUTCDay();
+    const daysSinceMonday = (dayOfWeek + 6) % 7;
+    const monday = new Date(now);
+    monday.setUTCDate(now.getUTCDate() - daysSinceMonday);
+    monday.setUTCHours(0, 0, 0, 0);
+    return monday;
+  };
+
+  const weekStart = getWeekStart();
+  const { count: treatRevealsThisWeek } = await supabase
+    .from("treat_reveals")
+    .select("id", { count: "exact", head: true })
+    .eq("journey_id", id)
+    .gte("revealed_at", weekStart.toISOString());
 
   if (error || !data) {
     notFound();
@@ -84,10 +103,14 @@ export default async function JourneyManagePage({ params }: Props) {
     revealed: allCards.filter((c) => c.is_revealed).length,
   };
 
-  // Count treats
+  // Count treats with quota-based "ready" calculation
+  const treatsPerWeek = journey.treats_per_week ?? 1;
+  const unrevealed = journey.treats?.filter((t) => !t.is_revealed).length ?? 0;
+  const treatsRemaining = Math.max(0, treatsPerWeek - (treatRevealsThisWeek ?? 0));
   const treatStats = {
     total: journey.treats?.length ?? 0,
     revealed: journey.treats?.filter((t) => t.is_revealed).length ?? 0,
+    ready: Math.min(treatsRemaining, unrevealed), // Can only reveal up to quota remaining
   };
 
   // Calculate completion status
@@ -239,7 +262,9 @@ export default async function JourneyManagePage({ params }: Props) {
               </div>
               <div className="flex-1 min-w-0">
                 <h3 className="font-medium text-[#2C1810] break-words">Treats</h3>
-                <p className="text-xs text-[#6B5344]">{treatStats.total} total</p>
+                <p className="text-xs text-emerald-600">
+                  {treatStats.total} total{treatStats.ready > 0 && ` • ${treatStats.ready} ready`}
+                </p>
               </div>
             </div>
             <p className="text-sm text-[#6B5344] break-words">
@@ -283,7 +308,6 @@ export default async function JourneyManagePage({ params }: Props) {
                 new Date(c.reveal_date) <= new Date()
               ).length ?? 0;
               const revealedTreats = dest.treats?.filter((t) => t.is_revealed).length ?? 0;
-              const readyTreats = dest.treats?.filter((t) => !t.is_revealed).length ?? 0;
 
               const needsCards = !hasCards;
               const needsTreats = hasCards && !hasTreats;

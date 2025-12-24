@@ -172,6 +172,7 @@ export default function ManageCardsPage() {
       booking_url: card.booking_url,
       location_name: card.location_name,
       location_address: card.location_address,
+      picture_url: card.picture_url,
     });
   };
 
@@ -422,6 +423,17 @@ export default function ManageCardsPage() {
                     </div>
                   </div>
 
+                  <div>
+                    <label className="block text-sm font-medium text-[#6B5344] mb-1">Picture URL</label>
+                    <input
+                      type="url"
+                      value={editForm.picture_url || ""}
+                      onChange={(e) => setEditForm({ ...editForm, picture_url: e.target.value })}
+                      placeholder="https://example.com/image.jpg"
+                      className="w-full px-3 py-2 border border-[#E5DDD5] rounded-lg focus:border-[#C9A227] outline-none"
+                    />
+                  </div>
+
                   <div className="flex justify-end gap-3 pt-4 border-t border-[#E5DDD5]">
                     <button
                       onClick={() => { setEditingCard(null); setEditForm({}); }}
@@ -444,10 +456,18 @@ export default function ManageCardsPage() {
                 <div className="flex">
                   {/* Card Preview */}
                   <div
-                    className="w-24 h-24 flex-shrink-0 flex items-center justify-center text-3xl"
+                    className="w-24 h-24 flex-shrink-0 flex items-center justify-center text-3xl relative overflow-hidden"
                     style={{ backgroundColor: RARITY_CONFIG[card.rarity as Rarity || "common"].bgColor }}
                   >
-                    {card.category ? CATEGORY_CONFIG[card.category as CardCategory]?.icon : "?"}
+                    {card.picture_url ? (
+                      <img
+                        src={card.picture_url}
+                        alt={card.name}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      card.category ? CATEGORY_CONFIG[card.category as CardCategory]?.icon : "?"
+                    )}
                   </div>
 
                   {/* Card Details */}
@@ -456,15 +476,17 @@ export default function ManageCardsPage() {
                       <div>
                         <div className="flex items-center gap-2 mb-1">
                           <h3 className="font-medium text-[#2C1810]">{card.name}</h3>
-                          <span
-                            className="px-2 py-0.5 text-xs rounded-full"
-                            style={{
-                              backgroundColor: RARITY_CONFIG[card.rarity as Rarity || "common"].bgColor,
-                              color: RARITY_CONFIG[card.rarity as Rarity || "common"].color,
-                            }}
-                          >
-                            {RARITY_CONFIG[card.rarity as Rarity || "common"].label}
-                          </span>
+                          {(card.rarity === "rare" || card.rarity === "legendary") && (
+                            <span
+                              className="px-2 py-0.5 text-xs rounded-full"
+                              style={{
+                                backgroundColor: RARITY_CONFIG[card.rarity].bgColor,
+                                color: RARITY_CONFIG[card.rarity].color,
+                              }}
+                            >
+                              {RARITY_CONFIG[card.rarity].label}
+                            </span>
+                          )}
                         </div>
                         <p className="text-sm text-[#6B5344] line-clamp-2 mb-2">{card.description}</p>
                         <div className="flex flex-wrap gap-3 text-xs text-[#6B5344]">

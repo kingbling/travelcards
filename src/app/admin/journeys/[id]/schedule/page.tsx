@@ -325,9 +325,11 @@ export default function SchedulePage() {
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
                       <span className="font-medium text-[#2C1810]">{card.name}</span>
-                      <span className={`text-xs px-2 py-0.5 rounded-full ${getRarityColor(card.rarity)}`}>
-                        {card.rarity || "common"}
-                      </span>
+                      {(card.rarity === "rare" || card.rarity === "legendary") && (
+                        <span className={`text-xs px-2 py-0.5 rounded-full ${getRarityColor(card.rarity)}`}>
+                          {card.rarity}
+                        </span>
+                      )}
                     </div>
                     <div className="flex items-center gap-4 text-sm text-[#6B5344]">
                       {card.destination && (

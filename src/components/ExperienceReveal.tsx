@@ -300,7 +300,7 @@ export function ExperienceReveal({ card, themeColors, onComplete, onClose }: Exp
       window.dispatchEvent(new CustomEvent("reveal:opening"));
     }
 
-    // Rarity reveal
+    // Rarity reveal phase (shows category icon, only shows rarity label for rare/legendary)
     else if (phase === "rarity") {
       timer = setTimeout(() => setPhase("emerge"), 1500);
       window.dispatchEvent(new CustomEvent("reveal:rarity", { detail: { rarity: card.rarity } }));
@@ -380,13 +380,14 @@ export function ExperienceReveal({ card, themeColors, onComplete, onClose }: Exp
 
       timer = setTimeout(() => {
         setPhase("complete");
-        onComplete();
+        // Don't auto-close - let user click close button
       }, duration);
       window.dispatchEvent(new CustomEvent("reveal:celebrate", { detail: { rarity: card.rarity } }));
     }
 
     return () => clearTimeout(timer);
-  }, [phase, countdown, card.rarity, onComplete, rarity, confettiColors]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, countdown, card.rarity, rarity, confettiColors]);
 
   return (
     <motion.div
@@ -688,24 +689,27 @@ export function ExperienceReveal({ card, themeColors, onComplete, onClose }: Exp
                 {categoryConfig.icon}
               </motion.div>
             )}
-            <motion.div
-              className="px-8 py-4 rounded-2xl text-2xl sm:text-3xl font-bold uppercase tracking-wider"
-              style={{
-                backgroundColor: rarityConfig.bgColor,
-                color: rarityConfig.color,
-                boxShadow: `0 0 40px ${rarityConfig.color}80`,
-              }}
-              animate={{
-                boxShadow: [
-                  `0 0 40px ${rarityConfig.color}80`,
-                  `0 0 60px ${rarityConfig.color}`,
-                  `0 0 40px ${rarityConfig.color}80`,
-                ],
-              }}
-              transition={{ repeat: Infinity, duration: 1.2 }}
-            >
-              {rarityConfig.label}
-            </motion.div>
+            {/* Only show rarity badge for rare/legendary */}
+            {(rarity === "rare" || rarity === "legendary") && (
+              <motion.div
+                className="px-8 py-4 rounded-2xl text-2xl sm:text-3xl font-bold uppercase tracking-wider"
+                style={{
+                  backgroundColor: rarityConfig.bgColor,
+                  color: rarityConfig.color,
+                  boxShadow: `0 0 40px ${rarityConfig.color}80`,
+                }}
+                animate={{
+                  boxShadow: [
+                    `0 0 40px ${rarityConfig.color}80`,
+                    `0 0 60px ${rarityConfig.color}`,
+                    `0 0 40px ${rarityConfig.color}80`,
+                  ],
+                }}
+                transition={{ repeat: Infinity, duration: 1.2 }}
+              >
+                {rarityConfig.label}
+              </motion.div>
+            )}
             {categoryConfig && (
               <p className="mt-4 text-white text-lg sm:text-xl font-medium">{categoryConfig.label}</p>
             )}
@@ -746,7 +750,11 @@ export function ExperienceReveal({ card, themeColors, onComplete, onClose }: Exp
             {/* Card */}
             <div
               className="bg-white rounded-3xl overflow-hidden shadow-2xl border-4"
-              style={{ borderColor: rarityConfig.color }}
+              style={{
+                borderColor: (rarity === "rare" || rarity === "legendary")
+                  ? rarityConfig.color
+                  : themeColors.primary
+              }}
             >
               {/* Image */}
               {card.picture_url ? (
@@ -756,15 +764,18 @@ export function ExperienceReveal({ card, themeColors, onComplete, onClose }: Exp
                     alt={card.name}
                     className="w-full h-full object-cover"
                   />
-                  <div
-                    className="absolute top-3 right-3 px-3 py-1.5 rounded-full text-xs font-bold uppercase"
-                    style={{
-                      backgroundColor: rarityConfig.bgColor,
-                      color: rarityConfig.color,
-                    }}
-                  >
-                    {rarityConfig.label}
-                  </div>
+                  {/* Only show rarity badge for rare/legendary */}
+                  {(rarity === "rare" || rarity === "legendary") && (
+                    <div
+                      className="absolute top-3 right-3 px-3 py-1.5 rounded-full text-xs font-bold uppercase"
+                      style={{
+                        backgroundColor: rarityConfig.bgColor,
+                        color: rarityConfig.color,
+                      }}
+                    >
+                      {rarityConfig.label}
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div
@@ -774,15 +785,18 @@ export function ExperienceReveal({ card, themeColors, onComplete, onClose }: Exp
                   }}
                 >
                   {categoryConfig?.icon || "✨"}
-                  <div
-                    className="absolute top-3 right-3 px-3 py-1.5 rounded-full text-xs font-bold uppercase"
-                    style={{
-                      backgroundColor: rarityConfig.bgColor,
-                      color: rarityConfig.color,
-                    }}
-                  >
-                    {rarityConfig.label}
-                  </div>
+                  {/* Only show rarity badge for rare/legendary */}
+                  {(rarity === "rare" || rarity === "legendary") && (
+                    <div
+                      className="absolute top-3 right-3 px-3 py-1.5 rounded-full text-xs font-bold uppercase"
+                      style={{
+                        backgroundColor: rarityConfig.bgColor,
+                        color: rarityConfig.color,
+                      }}
+                    >
+                      {rarityConfig.label}
+                    </div>
+                  )}
                 </div>
               )}
 

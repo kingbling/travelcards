@@ -50,6 +50,8 @@ interface Destination {
   waypoints: Waypoint[];
   startDate: string;
   endDate: string;
+  revealsPerWeek: string;  // "" means use journey default
+  treatsPerWeek: string;   // "" means use journey default
 }
 
 interface JourneyData {
@@ -98,7 +100,9 @@ export default function EditJourneyPage() {
       transportMode: "car",
       waypoints: [],
       startDate: "",
-      endDate: ""
+      endDate: "",
+      revealsPerWeek: "",
+      treatsPerWeek: ""
     },
   ]);
 
@@ -159,23 +163,29 @@ export default function EditJourneyPage() {
 
         if (destinationsData && destinationsData.length > 0) {
           setDestinations(
-            destinationsData.map((d) => ({
-              id: d.id,
-              type: (d.destination_type as "stay" | "roadtrip") || "stay",
-              name: d.name || "",
-              country: d.country || "",
-              startLocation: d.start_location || "",
-              endLocation: d.end_location || "",
-              transportMode: d.transport_mode || "car",
-              waypoints: (d.waypoints || []).map((wp: { id: string; name: string | null; description: string | null; day_number: number | null }) => ({
-                id: wp.id,
-                name: wp.name || "",
-                description: wp.description || "",
-                dayNumber: wp.day_number?.toString() || "",
-              })),
-              startDate: d.start_date || "",
-              endDate: d.end_date || "",
-            }))
+            destinationsData.map((d) => {
+              // Cast to include quota fields that may be present
+              const dest = d as typeof d & { reveals_per_week?: number | null; treats_per_week?: number | null };
+              return {
+                id: dest.id,
+                type: (dest.destination_type as "stay" | "roadtrip") || "stay",
+                name: dest.name || "",
+                country: dest.country || "",
+                startLocation: dest.start_location || "",
+                endLocation: dest.end_location || "",
+                transportMode: dest.transport_mode || "car",
+                waypoints: (dest.waypoints || []).map((wp: { id: string; name: string | null; description: string | null; day_number: number | null }) => ({
+                  id: wp.id,
+                  name: wp.name || "",
+                  description: wp.description || "",
+                  dayNumber: wp.day_number?.toString() || "",
+                })),
+                startDate: dest.start_date || "",
+                endDate: dest.end_date || "",
+                revealsPerWeek: dest.reveals_per_week?.toString() || "",
+                treatsPerWeek: dest.treats_per_week?.toString() || "",
+              };
+            })
           );
         }
 
@@ -245,7 +255,9 @@ export default function EditJourneyPage() {
         transportMode: "car",
         waypoints: [],
         startDate: "",
-        endDate: ""
+        endDate: "",
+        revealsPerWeek: "",
+        treatsPerWeek: "",
       },
     ]);
   };
@@ -393,6 +405,8 @@ export default function EditJourneyPage() {
           start_date: d.startDate || null,
           end_date: d.endDate || null,
           order_index: i,
+          reveals_per_week: d.revealsPerWeek ? parseInt(d.revealsPerWeek) : null,
+          treats_per_week: d.treatsPerWeek ? parseInt(d.treatsPerWeek) : null,
         };
 
         const { data: dest, error: destError } = await supabase
@@ -986,6 +1000,48 @@ export default function EditJourneyPage() {
                       </div>
                     );
                   })()}
+
+                  {/* Quota Overrides */}
+                  <div className="pt-3 border-t border-[#E5DDD5]">
+                    <label className="block text-sm font-medium text-[#2C1810] mb-2">
+                      Reveal Quotas <span className="font-normal text-[#6B5344]">(optional)</span>
+                    </label>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs text-[#6B5344] mb-1">Experiences/week</label>
+                        <select
+                          value={destination.revealsPerWeek}
+                          onChange={(e) => updateDestination(index, "revealsPerWeek", e.target.value)}
+                          className="w-full px-3 py-2 rounded-lg border border-[#E5DDD5] focus:border-[#C9A227] outline-none text-sm"
+                        >
+                          <option value="">Use journey default</option>
+                          <option value="1">1 per week</option>
+                          <option value="2">2 per week</option>
+                          <option value="3">3 per week</option>
+                          <option value="5">5 per week</option>
+                          <option value="7">7 per week (daily)</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs text-[#6B5344] mb-1">Treats/week</label>
+                        <select
+                          value={destination.treatsPerWeek}
+                          onChange={(e) => updateDestination(index, "treatsPerWeek", e.target.value)}
+                          className="w-full px-3 py-2 rounded-lg border border-[#E5DDD5] focus:border-[#C9A227] outline-none text-sm"
+                        >
+                          <option value="">Use journey default</option>
+                          <option value="1">1 per week</option>
+                          <option value="2">2 per week</option>
+                          <option value="3">3 per week</option>
+                          <option value="4">4 per week</option>
+                          <option value="5">5 per week</option>
+                        </select>
+                      </div>
+                    </div>
+                    <p className="text-xs text-[#6B5344] mt-1">
+                      Leave empty to use journey-wide settings
+                    </p>
+                  </div>
                 </div>
               ))}
 

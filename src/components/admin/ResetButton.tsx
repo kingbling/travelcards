@@ -100,14 +100,14 @@ export function ResetButton({
               </div>
               <div>
                 <h3 className="font-serif text-xl text-[#2C1810] mb-2">
-                  Reset Journey Reveals?
+                  Reset All Reveals and Treats?
                 </h3>
                 <div className="text-sm text-[#6B5344] space-y-2">
                   <p>This will:</p>
                   <ul className="list-disc list-inside space-y-1">
                     <li>Reset all revealed cards to hidden</li>
+                    <li>Reset all revealed treats to hidden</li>
                     <li>Clear all reveal history</li>
-                    <li>Recalculate reveal dates</li>
                     <li>Preserve all memories and notes</li>
                   </ul>
                   <p className="font-medium text-red-600 mt-3">This cannot be undone.</p>
@@ -169,7 +169,7 @@ export function ResetButton({
         ) : (
           <>
             <RotateCcw className="w-4 h-4" />
-            Reset Reveals
+            Reset All Reveals and Treats
           </>
         )}
       </button>
