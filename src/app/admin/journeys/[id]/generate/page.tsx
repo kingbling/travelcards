@@ -116,14 +116,14 @@ export default function GenerateCardsPage() {
   const [researchData, setResearchData] = useState<{
     amadeus: unknown[];
     googlePlaces: unknown[];
-    combined: unknown[];
+    slimExperiences: unknown[];
   } | null>(null);
   const [thinking, setThinking] = useState<string | null>(null);
   const [streamingOutput, setStreamingOutput] = useState<string>("");
   const [showThinking, setShowThinking] = useState(false);
   const [showInputData, setShowInputData] = useState(false);
   const [showResearchData, setShowResearchData] = useState(false);
-  const [showConsoleLogs, setShowConsoleLogs] = useState(false);
+  const [showConsoleLogs, setShowConsoleLogs] = useState(true); // Default to Console tab
   const [showOutput, setShowOutput] = useState(false);
   const [consoleLogs, setConsoleLogs] = useState<{ timestamp: string; level: string; source: string; message: string }[]>([]);
   const [isSaving, setIsSaving] = useState(false);
@@ -631,31 +631,6 @@ GENERATE: ${cardCount} unique experience cards tailored to this group`;
           <div className="bg-white rounded-xl border border-[#E5DDD5] overflow-hidden">
             <div className="flex border-b border-[#E5DDD5]">
               <button
-                onClick={() => { setShowInputData(false); setShowConsoleLogs(false); setShowOutput(false); }}
-                className={`flex-1 px-4 py-3 text-sm font-medium flex items-center justify-center gap-2 transition-colors ${
-                  !showInputData && !showConsoleLogs && !showOutput
-                    ? "bg-[#2C1810] text-white"
-                    : "text-[#6B5344] hover:bg-[#FDF8F3]"
-                }`}
-              >
-                <Brain className="w-4 h-4" />
-                Thinking
-              </button>
-              <button
-                onClick={() => { setShowInputData(false); setShowConsoleLogs(false); setShowOutput(true); }}
-                className={`flex-1 px-4 py-3 text-sm font-medium flex items-center justify-center gap-2 transition-colors ${
-                  showOutput
-                    ? "bg-[#2C1810] text-white"
-                    : "text-[#6B5344] hover:bg-[#FDF8F3]"
-                }`}
-              >
-                <FileText className="w-4 h-4" />
-                Output
-                {streamingOutput && (
-                  <span className="text-xs bg-white/20 px-1.5 py-0.5 rounded-full">{Math.round(streamingOutput.length / 1000)}k</span>
-                )}
-              </button>
-              <button
                 onClick={() => { setShowInputData(false); setShowConsoleLogs(true); setShowOutput(false); }}
                 className={`flex-1 px-4 py-3 text-sm font-medium flex items-center justify-center gap-2 transition-colors ${
                   showConsoleLogs
@@ -679,6 +654,31 @@ GENERATE: ${cardCount} unique experience cards tailored to this group`;
               >
                 <Database className="w-4 h-4" />
                 Input
+              </button>
+              <button
+                onClick={() => { setShowInputData(false); setShowConsoleLogs(false); setShowOutput(false); }}
+                className={`flex-1 px-4 py-3 text-sm font-medium flex items-center justify-center gap-2 transition-colors ${
+                  !showInputData && !showConsoleLogs && !showOutput
+                    ? "bg-[#2C1810] text-white"
+                    : "text-[#6B5344] hover:bg-[#FDF8F3]"
+                }`}
+              >
+                <Brain className="w-4 h-4" />
+                Thinking
+              </button>
+              <button
+                onClick={() => { setShowInputData(false); setShowConsoleLogs(false); setShowOutput(true); }}
+                className={`flex-1 px-4 py-3 text-sm font-medium flex items-center justify-center gap-2 transition-colors ${
+                  showOutput
+                    ? "bg-[#2C1810] text-white"
+                    : "text-[#6B5344] hover:bg-[#FDF8F3]"
+                }`}
+              >
+                <FileText className="w-4 h-4" />
+                Output
+                {streamingOutput && (
+                  <span className="text-xs bg-white/20 px-1.5 py-0.5 rounded-full">{Math.round(streamingOutput.length / 1000)}k</span>
+                )}
               </button>
             </div>
 
@@ -850,7 +850,7 @@ GENERATE: ${cardCount} unique experience cards tailored to this group`;
                       Research
                       {researchData && (
                         <span className="text-xs bg-white/20 px-2 py-0.5 rounded-full">
-                          {researchData.combined.length}
+                          {researchData.slimExperiences.length}
                         </span>
                       )}
                     </button>

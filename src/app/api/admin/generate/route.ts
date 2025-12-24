@@ -4,12 +4,15 @@ import Anthropic from "@anthropic-ai/sdk";
 import { AI_CONFIG } from "@/lib/ai/config";
 import {
   buildPrompt,
-  parseGeneratedCards,
+  parseAIResponse,
+  enrichCards,
   isDuplicateCard,
   SYSTEM_PROMPT,
   type GenerationContext,
   type Traveler,
   type DestinationContext,
+  type SlimExperience,
+  type FullExperience,
 } from "@/lib/ai/generate-cards";
 import {
   searchActivities,
@@ -23,7 +26,7 @@ import {
   isGooglePlacesConfigured,
   type PlaceResult,
 } from "@/lib/google/places";
-import { amadeusLogger, googleLogger, aiLogger, apiLogger } from "@/lib/logger";
+import { aiLogger, apiLogger, googleLogger } from "@/lib/logger";
 
 // Force dynamic to prevent caching for SSE
 export const dynamic = "force-dynamic";
@@ -271,24 +274,34 @@ export async function POST(request: Request) {
             streamLog("warn", "GEOCODE", `No coordinates found for ${targetDestination.name} - using AI knowledge only`);
           }
 
-          // Strip experiences to essential fields for AI (reduces token usage)
-          const slimExperiences = allExperiences.map(exp => ({
-            source: exp.source,
+          // Create SLIM experiences for AI prompt (minimal data - just for selection)
+          const slimExperiences: SlimExperience[] = allExperiences.map(exp => ({
             id: exp.id,
+            source: exp.source,
             name: exp.name,
             price: exp.price.display,
             categories: exp.categories,
-            bookingUrl: exp.bookingUrl,
-            pictureUrl: exp.pictureUrl,
-            address: exp.location.address,
           }));
 
-          // Format as slim JSON for AI prompt
-          const combinedExternalData = slimExperiences.length > 0
-            ? JSON.stringify(slimExperiences, null, 2)
-            : undefined;
+          // Create FULL experiences map for enrichment later
+          const experiencesMap = new Map<string, FullExperience>();
+          for (const exp of allExperiences) {
+            const key = `${exp.source}:${exp.id}`;
+            experiencesMap.set(key, {
+              id: exp.id,
+              source: exp.source,
+              name: exp.name,
+              price: exp.price.display,
+              categories: exp.categories,
+              bookingUrl: exp.bookingUrl || undefined,
+              pictureUrl: exp.pictureUrl || undefined,
+              address: exp.location.address || undefined,
+              lat: exp.location.latitude || undefined,
+              lng: exp.location.longitude || undefined,
+            });
+          }
 
-          // Build generation context
+          // Build generation context with slim experiences
           const context: GenerationContext = {
             journeyName: journey.name,
             recipientName: journey.recipient_name,
@@ -296,7 +309,7 @@ export async function POST(request: Request) {
             destination: targetDestination,
             existingCards: existingCardNames,
             categoryStats,
-            realActivities: combinedExternalData || undefined,
+            slimExperiences: slimExperiences.length > 0 ? slimExperiences : undefined,
           };
 
           // Build the prompt (request extra to account for deduplication)
@@ -310,13 +323,13 @@ export async function POST(request: Request) {
               type: "init",
               prompt,
               destination: targetDestination,
-              hasRealActivities: !!combinedExternalData,
+              hasRealActivities: slimExperiences.length > 0,
               amadeusCount,
               googlePlacesCount,
               researchData: {
                 amadeus: amadeusExperiences,
                 googlePlaces: googlePlacesExperiences,
-                combined: allExperiences,
+                slimExperiences,
               },
             })}\n\n`
           ));
@@ -335,19 +348,19 @@ export async function POST(request: Request) {
           }, 30000);
 
           try {
-          // Stream from Anthropic with extended thinking and web search (for seasonal events only)
+          // Stream from Anthropic with extended thinking and web search
           const stream = anthropic.messages.stream({
             model: AI_CONFIG.MODEL,
-            max_tokens: AI_CONFIG.MAX_TOKENS.CARD_GENERATION,
+            max_tokens: 16000, // Reduced - 12 cards ~6-8k tokens
             thinking: {
               type: "enabled",
-              budget_tokens: 10000,
+              budget_tokens: 5000, // Reduced from 10k
             },
             tools: [
               {
                 type: "web_search_20250305",
                 name: "web_search",
-                max_uses: 5,
+                max_uses: 2, // Reduced - only for events/festivals
               },
             ],
             system: SYSTEM_PROMPT,
@@ -433,10 +446,19 @@ export async function POST(request: Request) {
           const finalMessage = await stream.finalMessage();
           console.log("[STREAM] Got final message, parsing cards...");
 
-          // Parse the response
-          const generatedCards = parseGeneratedCards(responseText);
-          streamLog("info", "AI", `Parsed ${generatedCards.length} cards from response`);
-          console.log(`[STREAM] Parsed ${generatedCards.length} cards`);
+          // Parse AI response and enrich with our cached data
+          const aiCards = parseAIResponse(responseText);
+          streamLog("info", "AI", `Parsed ${aiCards.length} AI card outputs`);
+
+          // Count how many used refs vs AI-generated
+          const withRefs = aiCards.filter(c => c.ref).length;
+          const aiOriginal = aiCards.length - withRefs;
+          streamLog("info", "AI", `${withRefs} from data, ${aiOriginal} AI-generated`);
+
+          // Enrich cards with full experience data
+          const generatedCards = enrichCards(aiCards, experiencesMap);
+          streamLog("info", "AI", `Enriched ${generatedCards.length} cards`);
+          console.log(`[STREAM] Parsed and enriched ${generatedCards.length} cards`);
 
           // Filter out duplicates in two passes:
           // 1. Remove cards that match existing revealed cards
@@ -481,7 +503,7 @@ export async function POST(request: Request) {
               final: finalCards.length,
               existingCount: existingCardNames.length,
               fromRealExperiences: cardsFromAmadeus,
-              hasRealActivities: !!combinedExternalData,
+              hasRealActivities: slimExperiences.length > 0,
               amadeusCount,
               googlePlacesCount,
             },

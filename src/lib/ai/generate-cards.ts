@@ -179,20 +179,19 @@ ${slimExperiences.map(e => `• [${e.source}:${e.id}] ${e.name} - ${e.price}`).j
 
   const requirementsSection = hasExperiences
     ? `REQUIREMENTS:
-1. SELECT ${minFromData}+ experiences from the list above using their [source:id] reference
-2. ADD ${aiOriginalCount} original experiences (free local gems, events via web search)
-3. Match to traveler interests, especially the ⭐ GIFT RECIPIENT
-4. Mix budget levels: free → cheap → mid-range → 1-2 splurges`
+1. SELECT AT LEAST ${minFromData} from the list using exact [source:id] refs
+2. Add up to ${aiOriginalCount} free local gems (ref=null) - parks, viewpoints, etc.
+3. Use web search for events/festivals during travel dates (ref=null)
+4. Match to traveler interests, especially ⭐ GIFT RECIPIENT`
     : `REQUIREMENTS:
-1. Create ${cardCount} specific experiences for ${destination.name}
-2. Budget mix: 40% free, 30% cheap (<$20), 20% mid-range, 10% splurge
-3. Use web search to find current events/festivals
-4. Match to traveler interests`;
+1. Create ${cardCount} experiences for ${destination.name}
+2. Budget: 40% free, 30% cheap, 20% mid, 10% splurge
+3. Use web search for current events
+4. All cards have ref=null (no database)`;
 
-  return `Create ${cardCount} experience cards for:
+  return `Create ${cardCount} cards for:
 
-DESTINATION: ${destination.name}${destination.country ? `, ${destination.country}` : ""}
-DATES: ${dateRange} (${season})${routeSection}
+DESTINATION: ${destination.name}${destination.country ? `, ${destination.country}` : ""} | ${dateRange} (${season})${routeSection}
 
 TRAVELERS:
 ${travelerLines}
@@ -200,53 +199,52 @@ ${experiencesSection}${existingSection}${categorySection}
 
 ${requirementsSection}
 
-OUTPUT FORMAT - JSON array:
+JSON FORMAT:
 [
   {
-    "ref": "[source:id] from list above, OR null for your original ideas",
-    "name": "Experience title (max 60 chars)",
+    "ref": "[google_places:ChIJxxx] or [amadeus:xxx] from list, OR null",
+    "name": "Creative title",
     "description": "2-3 exciting sentences",
     "category": "food|wine|animals|art|nature|culture|adventure|family|spa|music",
     "targetProfile": "solo|couple|family|kids",
     "rarity": "common|uncommon|rare|legendary",
-    "estimatedCost": "Price with USD, e.g. 'R150 (~$8)' or 'Free'",
-    "durationHours": number,
-    "bookingMethod": "How to book/access",
-    "locationName": "Venue name (only if ref is null)",
-    "locationAddress": "Address (only if ref is null)",
-    "bookingUrl": "URL (only if ref is null and you found one via web search)",
-    "pictureUrl": "Image URL (only if ref is null and you found one via web search)"
+    "estimatedCost": "R150 (~$8) or Free",
+    "durationHours": 2,
+    "bookingMethod": "How to access",
+    "locationName": "only if ref=null",
+    "locationAddress": "only if ref=null"
   }
 ]
 
-IMPORTANT: When using "ref", we already have the location, URL, and image - just provide the creative fields (name, description, category, etc.)
-
-Return ONLY the JSON array.`;
+CRITICAL: Use refs from the list! We have pictures/URLs for those.`;
 }
 
-// System prompt for the AI - concise version
-export const SYSTEM_PROMPT = `You are a local travel guide creating experience cards. Be authentic and diverse.
+// System prompt for the AI
+export const SYSTEM_PROMPT = `You curate travel experiences. Select from our database and add your creative touch.
 
-WHEN SELECTING FROM AVAILABLE EXPERIENCES:
-- Use "ref" field with exact [source:id] format
-- We have all the details (pictures, URLs, coordinates) - just add creative description
-- Pick experiences matching traveler interests
+FOR EACH CARD YOU CREATE:
+- "ref": MUST be the exact reference like "[google_places:ChIJ...]" or "[amadeus:ABC...]"
+- "name": Your creative title (can differ from original)
+- "description": 2-3 engaging sentences making travelers excited
+- "category": food|wine|animals|art|nature|culture|adventure|family|spa|music
+- "targetProfile": solo|couple|family|kids
+- "rarity": common|uncommon|rare|legendary (based on uniqueness, not price)
+- "estimatedCost": Price from list or your estimate
+- "durationHours": Your estimate
+- "bookingMethod": How to access it
 
-WHEN ADDING YOUR OWN IDEAS:
-- Set ref to null
-- Provide locationName and locationAddress
-- Use web search ONLY for current events/festivals during travel dates
-- If you find a booking URL or image via web search, include it
+WE ALREADY HAVE (don't include these):
+- Pictures, booking URLs, coordinates, addresses
 
-BUDGET MIX: Mostly free/cheap, some mid-range, 1-2 splurges max.
-PRICING: Use local currency + USD, e.g. "R150 (~$8)" or "Free"
+ONLY use ref=null for:
+- Free local gems not in data (parks, viewpoints, street exploration)
+- Events found via web search during travel dates
 
-Be specific with real venues. Prioritize what locals do, not just tourist spots.`;
+Match experiences to traveler interests. Mix budget levels.`;
 
-// Parse AI response into structured cards
-export function parseGeneratedCards(response: string): GeneratedCard[] {
+// Parse AI response into raw card outputs (before enrichment)
+export function parseAIResponse(response: string): AICardOutput[] {
   try {
-    // Try to extract JSON from the response
     const jsonMatch = response.match(/\[[\s\S]*\]/);
     if (!jsonMatch) {
       aiLogger.error("No JSON array found in response");
@@ -254,14 +252,13 @@ export function parseGeneratedCards(response: string): GeneratedCard[] {
     }
 
     const parsed = JSON.parse(jsonMatch[0]);
-
     if (!Array.isArray(parsed)) {
       aiLogger.error("Parsed response is not an array");
       return [];
     }
 
-    // Validate and normalize each card
     return parsed.map((card: Record<string, unknown>) => ({
+      ref: card.ref && card.ref !== "null" ? String(card.ref) : undefined,
       name: String(card.name || "").slice(0, 60),
       description: String(card.description || ""),
       category: validateCategory(String(card.category || "culture")),
@@ -271,15 +268,71 @@ export function parseGeneratedCards(response: string): GeneratedCard[] {
       durationHours: typeof card.durationHours === "number" ? card.durationHours : null,
       bookingMethod: card.bookingMethod ? String(card.bookingMethod) : null,
       bookingUrl: card.bookingUrl && card.bookingUrl !== "null" ? String(card.bookingUrl) : null,
+      pictureUrl: card.pictureUrl && card.pictureUrl !== "null" ? String(card.pictureUrl) : null,
       locationName: card.locationName ? String(card.locationName) : null,
       locationAddress: card.locationAddress ? String(card.locationAddress) : null,
-      amadeusActivityId: card.amadeusActivityId && card.amadeusActivityId !== "null" ? String(card.amadeusActivityId) : null,
-      pictureUrl: card.pictureUrl && card.pictureUrl !== "null" ? String(card.pictureUrl) : null,
     }));
   } catch (error) {
     aiLogger.error("Failed to parse AI response:", error);
     return [];
   }
+}
+
+// Enrich AI output with full experience data
+export function enrichCards(
+  aiCards: AICardOutput[],
+  experiencesMap: Map<string, FullExperience>
+): GeneratedCard[] {
+  return aiCards.map(card => {
+    // If card has a ref, look up the full experience data
+    if (card.ref) {
+      // Strip brackets if present: "[google_places:ChIJ...]" -> "google_places:ChIJ..."
+      const cleanRef = card.ref.replace(/^\[|\]$/g, "");
+      const exp = experiencesMap.get(cleanRef);
+      if (exp) {
+        return {
+          name: card.name,
+          description: card.description,
+          category: card.category,
+          targetProfile: card.targetProfile,
+          rarity: card.rarity,
+          estimatedCost: card.estimatedCost || exp.price,
+          durationHours: card.durationHours,
+          bookingMethod: card.bookingMethod,
+          // Enriched from our data
+          bookingUrl: exp.bookingUrl || null,
+          pictureUrl: exp.pictureUrl || null,
+          locationName: exp.name,
+          locationAddress: exp.address || null,
+          locationLat: exp.lat || null,
+          locationLng: exp.lng || null,
+          amadeusActivityId: exp.source === "amadeus" ? exp.id : null,
+          googlePlaceId: exp.source === "google_places" ? exp.id : null,
+        };
+      }
+      aiLogger.warn(`Reference not found: ${cleanRef}`);
+    }
+
+    // AI-generated card (no ref) - use provided data
+    return {
+      name: card.name,
+      description: card.description,
+      category: card.category,
+      targetProfile: card.targetProfile,
+      rarity: card.rarity,
+      estimatedCost: card.estimatedCost,
+      durationHours: card.durationHours,
+      bookingMethod: card.bookingMethod,
+      bookingUrl: card.bookingUrl || null,
+      pictureUrl: card.pictureUrl || null,
+      locationName: card.locationName || null,
+      locationAddress: card.locationAddress || null,
+      locationLat: null,
+      locationLng: null,
+      amadeusActivityId: null,
+      googlePlaceId: null,
+    };
+  });
 }
 
 function validateCategory(cat: string): CardCategory {
