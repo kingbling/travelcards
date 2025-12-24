@@ -5,12 +5,15 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import {
+  AlertCircle,
   ArrowLeft,
-  Plus,
-  Trash2,
+  CheckCircle2,
   Edit3,
   Loader2,
+  Plus,
   Save,
+  Sparkles,
+  Trash2,
   X,
 } from "lucide-react";
 import type { LoveLetter, DisplayOn } from "@/types/database";
@@ -27,6 +30,7 @@ interface NoteForm {
   title: string;
   content: string;
   display_on: DisplayOn;
+  coreMessage?: string;
 }
 
 export default function PersonalNotesPage() {
@@ -38,8 +42,13 @@ export default function PersonalNotesPage() {
   const [notes, setNotes] = useState<LoveLetter[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
   const [editingNote, setEditingNote] = useState<NoteForm | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [message, setMessage] = useState<{
+    type: 'success' | 'error' | 'warning';
+    text: string;
+  } | null>(null);
 
   // Load notes
   useEffect(() => {
@@ -58,6 +67,14 @@ export default function PersonalNotesPage() {
 
     loadNotes();
   }, [journeyId, supabase]);
+
+  // Auto-dismiss message after 5 seconds
+  useEffect(() => {
+    if (message) {
+      const timer = setTimeout(() => setMessage(null), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [message]);
 
   const handleSave = async () => {
     if (!editingNote || !editingNote.title.trim() || !editingNote.content.trim()) return;
@@ -103,8 +120,6 @@ export default function PersonalNotesPage() {
   };
 
   const handleDelete = async (noteId: string) => {
-    if (!confirm("Delete this note?")) return;
-
     await supabase.from("love_letters").delete().eq("id", noteId);
     setNotes(notes.filter((n) => n.id !== noteId));
   };
@@ -114,7 +129,7 @@ export default function PersonalNotesPage() {
       id: note.id,
       title: note.title,
       content: note.content,
-      display_on: note.display_on || "intro",
+      display_on: (note.display_on as DisplayOn) || "intro",
     });
     setShowForm(true);
   };
@@ -124,8 +139,63 @@ export default function PersonalNotesPage() {
       title: "",
       content: "",
       display_on: "intro",
+      coreMessage: "I've been planning this gift for months, imagining your face as you discover each surprise...",
     });
     setShowForm(true);
+  };
+
+  const generatePlaceholder = async () => {
+    if (!editingNote) return;
+
+    setIsGenerating(true);
+    setMessage(null);
+
+    try {
+      const res = await fetch(`/api/admin/journeys/${journeyId}/generate-note`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          displayOn: editingNote.display_on,
+          coreMessage: editingNote.coreMessage?.trim() || undefined,
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setEditingNote({
+          ...editingNote,
+          title: data.title,
+          content: data.content,
+        });
+
+        // Show appropriate feedback based on whether fallback was used
+        if (data.usedFallback) {
+          setMessage({
+            type: 'warning',
+            text: `AI unavailable - using your message as-is. ${data.fallbackReason || ''}`,
+          });
+        } else {
+          setMessage({
+            type: 'success',
+            text: 'Note generated successfully',
+          });
+        }
+      } else {
+        const error = await res.json();
+        setMessage({
+          type: 'error',
+          text: `Failed to generate: ${error.error || 'Unknown error'}`,
+        });
+      }
+    } catch (error) {
+      console.error("Failed to generate placeholder:", error);
+      setMessage({
+        type: 'error',
+        text: 'Network error - please try again',
+      });
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   if (isLoading) {
@@ -138,6 +208,42 @@ export default function PersonalNotesPage() {
 
   return (
     <div className="max-w-3xl mx-auto">
+      {/* Toast Message */}
+      {message && (
+        <div className="fixed top-6 right-6 z-50 animate-in slide-in-from-top-4">
+          <div className={`rounded-lg shadow-lg p-4 flex items-center gap-3 max-w-md ${
+            message.type === 'success'
+              ? 'bg-green-50 border border-green-200'
+              : message.type === 'warning'
+              ? 'bg-yellow-50 border border-yellow-200'
+              : 'bg-red-50 border border-red-200'
+          }`}>
+            {message.type === 'success' ? (
+              <CheckCircle2 className="w-5 h-5 text-green-600 flex-shrink-0" />
+            ) : message.type === 'warning' ? (
+              <AlertCircle className="w-5 h-5 text-yellow-600 flex-shrink-0" />
+            ) : (
+              <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0" />
+            )}
+            <p className={`text-sm ${
+              message.type === 'success'
+                ? 'text-green-800'
+                : message.type === 'warning'
+                ? 'text-yellow-800'
+                : 'text-red-800'
+            }`}>
+              {message.text}
+            </p>
+            <button
+              onClick={() => setMessage(null)}
+              className="ml-auto flex-shrink-0"
+            >
+              <X className="w-4 h-4 text-gray-400 hover:text-gray-600" />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Back link */}
       <Link
         href={`/admin/journeys/${journeyId}`}
@@ -176,46 +282,24 @@ export default function PersonalNotesPage() {
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-[#2C1810] mb-1">
-                Title
-              </label>
-              <input
-                type="text"
-                value={editingNote.title}
-                onChange={(e) =>
-                  setEditingNote({ ...editingNote, title: e.target.value })
-                }
-                placeholder="A special message..."
-                className="w-full px-4 py-3 rounded-xl border border-[#E5DDD5] focus:border-[#C9A227] focus:ring-2 focus:ring-[#C9A227]/20 outline-none"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-[#2C1810] mb-1">
-                Message
-              </label>
-              <textarea
-                value={editingNote.content}
-                onChange={(e) =>
-                  setEditingNote({ ...editingNote, content: e.target.value })
-                }
-                placeholder="Write your personal message here..."
-                rows={5}
-                className="w-full px-4 py-3 rounded-xl border border-[#E5DDD5] focus:border-[#C9A227] focus:ring-2 focus:ring-[#C9A227]/20 outline-none resize-none"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-[#2C1810] mb-1">
                 When to show
               </label>
               <select
                 value={editingNote.display_on}
-                onChange={(e) =>
+                onChange={(e) => {
+                  const newDisplayOn = e.target.value as DisplayOn;
+                  const exampleMessages = {
+                    intro: "I've been planning this gift for months, imagining your face as you discover each surprise...",
+                    destination_start: "I can't wait to explore this place with you, it's been on my bucket list forever...",
+                    chapter_start: "Get ready for something different, this next part is going to be special...",
+                    card_reveal: "This experience reminds me of our first date, I know you're going to love it...",
+                  };
                   setEditingNote({
                     ...editingNote,
-                    display_on: e.target.value as DisplayOn,
-                  })
-                }
+                    display_on: newDisplayOn,
+                    coreMessage: editingNote.coreMessage || exampleMessages[newDisplayOn],
+                  });
+                }}
                 className="w-full px-4 py-3 rounded-xl border border-[#E5DDD5] focus:border-[#C9A227] focus:ring-2 focus:ring-[#C9A227]/20 outline-none"
               >
                 {DISPLAY_OPTIONS.map((opt) => (
@@ -225,6 +309,77 @@ export default function PersonalNotesPage() {
                 ))}
               </select>
             </div>
+
+            {/* Core Message - always show if no title/content yet */}
+            {!editingNote.title && !editingNote.content && (
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-sm font-medium text-[#2C1810] mb-1">
+                    Your Message
+                  </label>
+                  <textarea
+                    value={editingNote.coreMessage || ""}
+                    onChange={(e) =>
+                      setEditingNote({ ...editingNote, coreMessage: e.target.value })
+                    }
+                    rows={3}
+                    className="w-full px-4 py-3 rounded-xl border border-[#E5DDD5] focus:border-[#C9A227] focus:ring-2 focus:ring-[#C9A227]/20 outline-none resize-none"
+                  />
+                </div>
+
+                <button
+                  onClick={generatePlaceholder}
+                  disabled={isGenerating}
+                  type="button"
+                  className="inline-flex items-center gap-2 px-4 py-2 text-sm bg-white border border-[#E5DDD5] text-[#6B5344] rounded-lg hover:border-[#C9A227] hover:text-[#C9A227] hover:bg-[#FDF8F3] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isGenerating ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Generating...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-4 h-4" />
+                      Generate
+                    </>
+                  )}
+                </button>
+              </div>
+            )}
+
+            {/* Edit Fields - show after generating */}
+            {(editingNote.title || editingNote.content) && (
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-[#2C1810] mb-1">
+                    Title
+                  </label>
+                  <input
+                    type="text"
+                    value={editingNote.title}
+                    onChange={(e) =>
+                      setEditingNote({ ...editingNote, title: e.target.value })
+                    }
+                    className="w-full px-4 py-3 rounded-xl border border-[#E5DDD5] focus:border-[#C9A227] focus:ring-2 focus:ring-[#C9A227]/20 outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-[#2C1810] mb-1">
+                    Message
+                  </label>
+                  <textarea
+                    value={editingNote.content}
+                    onChange={(e) =>
+                      setEditingNote({ ...editingNote, content: e.target.value })
+                    }
+                    rows={4}
+                    className="w-full px-4 py-3 rounded-xl border border-[#E5DDD5] focus:border-[#C9A227] focus:ring-2 focus:ring-[#C9A227]/20 outline-none resize-none"
+                  />
+                </div>
+              </div>
+            )}
 
             <div className="flex items-center gap-3 pt-4">
               <button

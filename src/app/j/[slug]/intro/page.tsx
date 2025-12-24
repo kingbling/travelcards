@@ -4,6 +4,8 @@ import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowRight, Heart } from "lucide-react";
+import { useJourneyAuth } from "@/hooks/useJourneyAuth";
+import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 
 export default function IntroPage() {
   const router = useRouter();
@@ -18,13 +20,7 @@ export default function IntroPage() {
   } | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Check authentication
-  useEffect(() => {
-    const authenticated = sessionStorage.getItem(`journey-${slug}-authenticated`);
-    if (authenticated !== "true") {
-      router.replace(`/j/${slug}`);
-    }
-  }, [slug, router]);
+  const { isAuthenticated, isLoading: authLoading } = useJourneyAuth({ slug });
 
   // Fetch intro love letter
   useEffect(() => {
@@ -55,18 +51,8 @@ export default function IntroPage() {
     router.push(`/j/${slug}/journey`);
   };
 
-  if (loading) {
-    return (
-      <main className="min-h-screen flex items-center justify-center bg-gradient-to-b from-[#FDF8F3] to-[#FAF0E6]">
-        <motion.div
-          className="text-[#C9A227]"
-          animate={{ rotate: 360 }}
-          transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-        >
-          <Heart className="w-8 h-8" />
-        </motion.div>
-      </main>
-    );
+  if (loading || authLoading) {
+    return <LoadingSpinner />;
   }
 
   return (

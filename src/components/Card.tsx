@@ -3,11 +3,11 @@
 import { motion } from "framer-motion";
 import {
   ExperienceCard,
-  RARITY_CONFIG,
+  getRarityConfig,
   PROFILE_CONFIG,
   CATEGORY_CONFIG,
 } from "@/types";
-import { Clock, ExternalLink } from "lucide-react";
+import { Clock } from "lucide-react";
 
 interface CardProps {
   card: ExperienceCard;
@@ -16,7 +16,7 @@ interface CardProps {
 }
 
 export function Card({ card, isFlipped = false, onClick }: CardProps) {
-  const rarityConfig = RARITY_CONFIG[card.rarity];
+  const rarityConfig = getRarityConfig(card.rarity);
   const profileConfig = PROFILE_CONFIG[card.targetProfile];
   const categoryConfig = CATEGORY_CONFIG[card.category];
 
@@ -86,22 +86,6 @@ export function Card({ card, isFlipped = false, onClick }: CardProps) {
               <div className="flex items-center gap-2 text-[#6B5344]">
                 <Clock className="w-4 h-4" />
                 <span>{card.durationHours} hours</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="font-semibold text-[#2C1810]">
-                  {card.estimatedCost}
-                </span>
-                {card.bookingUrl && (
-                  <a
-                    href={card.bookingUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-1 text-[#E07B39] hover:underline"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    Book <ExternalLink className="w-3 h-3" />
-                  </a>
-                )}
               </div>
             </div>
           </div>

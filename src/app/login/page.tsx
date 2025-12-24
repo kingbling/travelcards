@@ -141,7 +141,7 @@ export default function LoginPage() {
         <div className="text-center mb-8">
           <div className="inline-flex items-center gap-2 px-4 py-2 bg-white/80 rounded-full shadow-sm mb-6">
             <Sparkles className="w-4 h-4 text-[#C9A227]" />
-            <span className="text-sm font-medium text-[#2C1810]">TravelCards</span>
+            <span className="text-sm font-medium text-[#2C1810]">Katl.in</span>
           </div>
           <h1 className="font-serif text-3xl text-[#2C1810] mb-2">
             {mode === "login" && "Welcome Back"}
@@ -149,8 +149,8 @@ export default function LoginPage() {
             {mode === "magic" && "Magic Link"}
           </h1>
           <p className="text-[#6B5344]">
-            {mode === "login" && "Sign in to manage your journeys"}
-            {mode === "signup" && "Start creating magical journeys"}
+            {mode === "login" && "Sign in to curate your journeys"}
+            {mode === "signup" && "Start curating magical journeys"}
             {mode === "magic" && "Sign in without a password"}
           </p>
         </div>

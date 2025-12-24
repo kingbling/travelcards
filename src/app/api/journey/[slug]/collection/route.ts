@@ -8,12 +8,14 @@ export async function GET(
   const { slug } = await params;
   const supabase = await createClient();
 
-  // Get journey with destinations
+  // Get journey with destinations (without is_published filter for curator preview)
   const { data: journey, error: journeyError } = await supabase
     .from("journeys")
     .select(`
       id,
       name,
+      is_published,
+      curator_id,
       destinations (
         id,
         name,
@@ -21,11 +23,18 @@ export async function GET(
       )
     `)
     .eq("unique_slug", slug)
-    .eq("is_published", true)
     .single();
 
   if (journeyError || !journey) {
     return NextResponse.json({ error: "Journey not found" }, { status: 404 });
+  }
+
+  // If not published, check if user is curator (preview mode)
+  if (!journey.is_published) {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user || journey.curator_id !== user.id) {
+      return NextResponse.json({ error: "Journey not found" }, { status: 404 });
+    }
   }
 
   // Get all destination IDs

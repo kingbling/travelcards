@@ -12,6 +12,31 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "14.1"
   }
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
   public: {
     Tables: {
       cards: {
@@ -30,13 +55,19 @@ export type Database = {
           estimated_cost: string | null
           experience_date: string | null
           generation_prompt: string | null
+          google_place_id: string | null
           id: string
           is_admin_preview: boolean | null
           is_prebooked: boolean | null
           is_revealed: boolean | null
+          location_address: string | null
+          location_lat: number | null
+          location_lng: number | null
+          location_name: string | null
           name: string
           order_index: number | null
           personal_note: string | null
+          picture_url: string | null
           rarity: string | null
           reveal_date: string | null
           revealed_at: string | null
@@ -59,13 +90,19 @@ export type Database = {
           estimated_cost?: string | null
           experience_date?: string | null
           generation_prompt?: string | null
+          google_place_id?: string | null
           id?: string
           is_admin_preview?: boolean | null
           is_prebooked?: boolean | null
           is_revealed?: boolean | null
+          location_address?: string | null
+          location_lat?: number | null
+          location_lng?: number | null
+          location_name?: string | null
           name: string
           order_index?: number | null
           personal_note?: string | null
+          picture_url?: string | null
           rarity?: string | null
           reveal_date?: string | null
           revealed_at?: string | null
@@ -88,13 +125,19 @@ export type Database = {
           estimated_cost?: string | null
           experience_date?: string | null
           generation_prompt?: string | null
+          google_place_id?: string | null
           id?: string
           is_admin_preview?: boolean | null
           is_prebooked?: boolean | null
           is_revealed?: boolean | null
+          location_address?: string | null
+          location_lat?: number | null
+          location_lng?: number | null
+          location_name?: string | null
           name?: string
           order_index?: number | null
           personal_note?: string | null
+          picture_url?: string | null
           rarity?: string | null
           reveal_date?: string | null
           revealed_at?: string | null
@@ -284,7 +327,10 @@ export type Database = {
           published_at: string | null
           recipient_email: string | null
           recipient_name: string | null
+          reveal_card_choices: number | null
+          reveal_first_immediately: boolean | null
           reveals_per_week: number | null
+          treats_per_week: number | null
           unique_slug: string | null
           updated_at: string | null
         }
@@ -299,7 +345,10 @@ export type Database = {
           published_at?: string | null
           recipient_email?: string | null
           recipient_name?: string | null
+          reveal_card_choices?: number | null
+          reveal_first_immediately?: boolean | null
           reveals_per_week?: number | null
+          treats_per_week?: number | null
           unique_slug?: string | null
           updated_at?: string | null
         }
@@ -314,7 +363,10 @@ export type Database = {
           published_at?: string | null
           recipient_email?: string | null
           recipient_name?: string | null
+          reveal_card_choices?: number | null
+          reveal_first_immediately?: boolean | null
           reveals_per_week?: number | null
+          treats_per_week?: number | null
           unique_slug?: string | null
           updated_at?: string | null
         }
@@ -499,16 +551,19 @@ export type Database = {
         Row: {
           card_id: string | null
           id: string
+          journey_id: string
           revealed_at: string | null
         }
         Insert: {
           card_id?: string | null
           id?: string
+          journey_id: string
           revealed_at?: string | null
         }
         Update: {
           card_id?: string | null
           id?: string
+          journey_id?: string
           revealed_at?: string | null
         }
         Relationships: [
@@ -517,6 +572,108 @@ export type Database = {
             columns: ["card_id"]
             isOneToOne: false
             referencedRelation: "cards"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reveals_journey_id_fkey"
+            columns: ["journey_id"]
+            isOneToOne: false
+            referencedRelation: "journeys"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      treat_reveals: {
+        Row: {
+          id: string
+          journey_id: string
+          revealed_at: string | null
+          treat_id: string
+        }
+        Insert: {
+          id?: string
+          journey_id: string
+          revealed_at?: string | null
+          treat_id: string
+        }
+        Update: {
+          id?: string
+          journey_id?: string
+          revealed_at?: string | null
+          treat_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "treat_reveals_journey_id_fkey"
+            columns: ["journey_id"]
+            isOneToOne: false
+            referencedRelation: "journeys"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "treat_reveals_treat_id_fkey"
+            columns: ["treat_id"]
+            isOneToOne: false
+            referencedRelation: "treats"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      treats: {
+        Row: {
+          category: string | null
+          created_at: string | null
+          description: string | null
+          estimated_cost: string | null
+          generation_prompt: string | null
+          id: string
+          is_revealed: boolean | null
+          journey_id: string
+          name: string
+          order_index: number | null
+          picture_url: string | null
+          rarity: string | null
+          revealed_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          category?: string | null
+          created_at?: string | null
+          description?: string | null
+          estimated_cost?: string | null
+          generation_prompt?: string | null
+          id?: string
+          is_revealed?: boolean | null
+          journey_id: string
+          name: string
+          order_index?: number | null
+          picture_url?: string | null
+          rarity?: string | null
+          revealed_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          category?: string | null
+          created_at?: string | null
+          description?: string | null
+          estimated_cost?: string | null
+          generation_prompt?: string | null
+          id?: string
+          is_revealed?: boolean | null
+          journey_id?: string
+          name?: string
+          order_index?: number | null
+          picture_url?: string | null
+          rarity?: string | null
+          revealed_at?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "treats_journey_id_fkey"
+            columns: ["journey_id"]
+            isOneToOne: false
+            referencedRelation: "journeys"
             referencedColumns: ["id"]
           },
         ]
@@ -696,6 +853,9 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {},
   },

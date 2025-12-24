@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { verifyJourneyAccess, isJourneyAuthSuccess } from "@/lib/api/journey-auth";
 
 export async function POST(
   request: Request,
@@ -12,19 +13,12 @@ export async function POST(
     return NextResponse.json({ error: "Card ID required" }, { status: 400 });
   }
 
-  const supabase = await createClient();
-
-  // Verify journey exists and is published
-  const { data: journey, error: journeyError } = await supabase
-    .from("journeys")
-    .select("id")
-    .eq("unique_slug", slug)
-    .eq("is_published", true)
-    .single();
-
-  if (journeyError || !journey) {
-    return NextResponse.json({ error: "Journey not found" }, { status: 404 });
+  const result = await verifyJourneyAccess(slug);
+  if (!isJourneyAuthSuccess(result)) {
+    return result.response;
   }
+
+  const supabase = await createClient();
 
   // Verify card exists and is revealed
   const { data: card, error: cardError } = await supabase
@@ -53,7 +47,7 @@ export async function POST(
         .eq("id", chapter.destination_id)
         .single();
 
-      if (!destination || destination.journey_id !== journey.id) {
+      if (!destination || destination.journey_id !== result.journey.id) {
         return NextResponse.json({ error: "Card not found" }, { status: 404 });
       }
     }

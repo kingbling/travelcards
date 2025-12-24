@@ -15,8 +15,8 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "TravelCards | Your Adventure Awaits",
-  description: "Discover magical travel experiences, one card at a time",
+  title: "Katl.in | Journeys Worth Revealing",
+  description: "Curate magical travel experiences, revealed one moment at a time",
 };
 
 export default function RootLayout({

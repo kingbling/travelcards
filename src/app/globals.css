@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "mapbox-gl/dist/mapbox-gl.css";
 
 /* Cape Town Theme: Warm sunset oranges, African earth tones, gold */
 :root {

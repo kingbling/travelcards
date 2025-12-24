@@ -128,15 +128,36 @@ export async function POST(
       }, { status: 500 });
     }
 
-    console.log(`[RESET] Successfully reset journey ${journeyId}`);
+    // 7. Reset all treats for this journey
+    const { count: treatsCount } = await serviceClient
+      .from("treats")
+      .select("id", { count: "exact", head: true })
+      .eq("journey_id", journeyId)
+      .eq("is_revealed", true);
+
+    const { error: treatsError } = await serviceClient
+      .from("treats")
+      .update({
+        is_revealed: false,
+        revealed_at: null,
+      })
+      .eq("journey_id", journeyId);
+
+    if (treatsError) {
+      console.error("[RESET] Failed to reset treats:", treatsError);
+      // Don't fail the whole operation, just log it
+    }
+
+    console.log(`[RESET] Successfully reset journey ${journeyId}, including ${treatsCount || 0} treats`);
 
     return NextResponse.json({
       success: true,
       stats: {
         cardsReset: cardIds.length,
         revealsCleared: revealCount || 0,
+        treatsReset: treatsCount || 0,
       },
-      message: `Reset complete! ${cardIds.length} cards reset, ${revealCount || 0} reveals cleared`,
+      message: `Reset complete! ${cardIds.length} cards, ${treatsCount || 0} treats reset`,
     });
   } catch (error) {
     console.error("[RESET] Error:", error);

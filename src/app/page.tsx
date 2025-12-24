@@ -43,7 +43,7 @@ export default function Home() {
             transition={{ delay: 0.3, type: "spring" }}
           >
             <Sparkles className="w-4 h-4 text-[#C9A227]" />
-            <span className="text-sm font-medium text-[#2C1810]">TravelCards</span>
+            <span className="text-sm font-medium text-[#2C1810]">Katl.in</span>
           </motion.div>
 
           {/* Title */}
@@ -53,9 +53,9 @@ export default function Home() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.4 }}
           >
-            Gift Unforgettable
+            Journeys Worth
             <br />
-            <span className="text-legendary">Adventures</span>
+            <span className="text-legendary">Revealing</span>
           </motion.h1>
 
           {/* Subtitle */}
@@ -65,9 +65,9 @@ export default function Home() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.5 }}
           >
-            Create personalized travel experience cards for your loved ones.
+            Craft personalized travel experiences for the ones you love.
             <br />
-            Each card reveals a curated adventure, one magical moment at a time.
+            Curated adventures, revealed one magical moment at a time.
           </motion.p>
 
           {/* CTA Buttons */}
@@ -112,7 +112,7 @@ export default function Home() {
             How It Works
           </h2>
           <p className="text-[#6B5344] mb-12">
-            Create magical travel experiences for your loved ones
+            Curate magical travel experiences, revealed over time
           </p>
 
           {/* Steps */}
@@ -220,7 +220,7 @@ export default function Home() {
 
       {/* Footer */}
       <footer className="px-6 py-8 text-center text-sm text-[#6B5344]">
-        <p>TravelCards - Gift unforgettable adventures</p>
+        <p>Katl.in - Journeys worth revealing</p>
         <p className="mt-2">
           <Link href="/login" className="text-[#E07B39] hover:underline">
             Curator Login

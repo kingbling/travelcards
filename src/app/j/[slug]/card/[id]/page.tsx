@@ -7,13 +7,14 @@ import {
   ArrowLeft,
   Heart,
   Clock,
-  ExternalLink,
   Star,
   Camera,
   MessageSquare,
   MapPin,
 } from "lucide-react";
-import { Card as CardType, Memory, RARITY_CONFIG, CATEGORY_CONFIG, CardCategory, PROFILE_CONFIG, TargetProfile } from "@/types/database";
+import { Card as CardType, Memory, RARITY_CONFIG, CATEGORY_CONFIG, CardCategory, PROFILE_CONFIG, TargetProfile, getRarityConfig } from "@/types/database";
+import { useJourneyAuth } from "@/hooks/useJourneyAuth";
+import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 
 interface CardData extends CardType {
   memory?: Memory;
@@ -32,13 +33,7 @@ export default function CardDetailPage() {
   const [memoryRating, setMemoryRating] = useState(0);
   const [saving, setSaving] = useState(false);
 
-  // Check authentication
-  useEffect(() => {
-    const authenticated = sessionStorage.getItem(`journey-${slug}-authenticated`);
-    if (authenticated !== "true") {
-      router.replace(`/j/${slug}`);
-    }
-  }, [slug, router]);
+  const { isAuthenticated, isLoading: authLoading } = useJourneyAuth({ slug });
 
   // Fetch card
   useEffect(() => {
@@ -90,18 +85,8 @@ export default function CardDetailPage() {
     }
   };
 
-  if (loading) {
-    return (
-      <main className="min-h-screen flex items-center justify-center bg-gradient-to-b from-[#FDF8F3] to-[#FAF0E6]">
-        <motion.div
-          className="text-[#C9A227]"
-          animate={{ rotate: 360 }}
-          transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-        >
-          <Heart className="w-8 h-8" />
-        </motion.div>
-      </main>
-    );
+  if (loading || authLoading) {
+    return <LoadingSpinner />;
   }
 
   if (!card) {
@@ -136,7 +121,7 @@ export default function CardDetailPage() {
           <div
             className="h-2"
             style={{
-              background: `linear-gradient(90deg, ${RARITY_CONFIG[card.rarity].color}, ${RARITY_CONFIG[card.rarity].color}80)`,
+              background: `linear-gradient(90deg, ${getRarityConfig(card.rarity).color}, ${getRarityConfig(card.rarity).color}80)`,
             }}
           />
 
@@ -146,11 +131,11 @@ export default function CardDetailPage() {
               <span
                 className="text-xs font-medium px-3 py-1 rounded-full"
                 style={{
-                  backgroundColor: RARITY_CONFIG[card.rarity].bgColor,
-                  color: RARITY_CONFIG[card.rarity].color,
+                  backgroundColor: getRarityConfig(card.rarity).bgColor,
+                  color: getRarityConfig(card.rarity).color,
                 }}
               >
-                {RARITY_CONFIG[card.rarity].label}
+                {getRarityConfig(card.rarity).label}
               </span>
               {card.category && CATEGORY_CONFIG[card.category as CardCategory] && (
                 <span className="text-sm px-2 py-1 bg-[#FAF0E6] rounded-full">
@@ -179,33 +164,13 @@ export default function CardDetailPage() {
             )}
 
             {/* Details */}
-            <div className="flex flex-wrap gap-4 text-sm text-[#6B5344] mb-6">
-              {card.duration_hours && (
+            {card.duration_hours && (
+              <div className="flex flex-wrap gap-4 text-sm text-[#6B5344] mb-6">
                 <div className="flex items-center gap-1">
                   <Clock className="w-4 h-4" />
                   <span>{card.duration_hours} hours</span>
                 </div>
-              )}
-              {card.estimated_cost && (
-                <div className="flex items-center gap-1">
-                  <span>
-                    {card.currency} {card.estimated_cost}
-                  </span>
-                </div>
-              )}
-            </div>
-
-            {/* Booking button */}
-            {card.booking_url && (
-              <a
-                href={card.booking_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center justify-center gap-2 w-full py-3 px-6 bg-gradient-to-r from-[#E07B39] to-[#C9A227] text-white font-medium rounded-full hover:shadow-lg transition-all"
-              >
-                Book This Experience
-                <ExternalLink className="w-4 h-4" />
-              </a>
+              </div>
             )}
 
             {/* Location/Map */}

@@ -25,6 +25,7 @@ export interface GenerationContext {
   destination: DestinationContext;
   existingCards: string[];
   categoryStats: Record<string, number>;
+  realActivities?: string; // Formatted real activities from Amadeus
 }
 
 export interface GeneratedCard {
@@ -39,6 +40,8 @@ export interface GeneratedCard {
   bookingUrl: string | null;
   locationName: string | null;
   locationAddress: string | null;
+  amadeusActivityId: string | null;
+  pictureUrl: string | null;
 }
 
 // Get season from date and hemisphere
@@ -83,7 +86,7 @@ function formatDateRange(start: string | null, end: string | null): string {
 
 // Build the user prompt for AI
 export function buildPrompt(context: GenerationContext, cardCount: number): string {
-  const { destination, travelers, existingCards, categoryStats } = context;
+  const { destination, travelers, existingCards, categoryStats, realActivities } = context;
 
   const season = getSeason(destination.startDate, destination.country);
   const dateRange = formatDateRange(destination.startDate, destination.endDate);
@@ -91,7 +94,7 @@ export function buildPrompt(context: GenerationContext, cardCount: number): stri
   // Build travelers section
   const travelerLines = travelers.map(t => {
     const interestStr = t.interests.length > 0 ? t.interests.join(", ") : "no specific interests listed";
-    const recipientMark = t.isRecipient ? " (Gift Recipient)" : "";
+    const recipientMark = t.isRecipient ? " ⭐ GIFT RECIPIENT" : "";
     const ageStr = t.age ? `, ${t.age}` : "";
     const roleStr = t.role ? `, ${t.role}` : "";
     return `- ${t.name}${ageStr}${roleStr}${recipientMark}: ${interestStr}`;
@@ -116,20 +119,59 @@ export function buildPrompt(context: GenerationContext, cardCount: number): stri
     ? `\nROUTE STOPS: ${destination.waypoints.join(" → ")}\nInclude experiences for stops along the way.`
     : "";
 
-  return `Create ${cardCount} UNIQUE experience cards for this trip:
+  // Real activities section (unified JSON from Amadeus + Google Places)
+  const hasRealActivities = !!realActivities;
 
-DESTINATION: ${destination.name}${destination.country ? `, ${destination.country}` : ""}
-DATES: ${dateRange}
-SEASON: ${season}
-${routeSection}
+  // Calculate how many real experiences to use vs local knowledge
+  const minRealExperiences = Math.floor(cardCount * 0.65); // 65% minimum from real data
+  const maxRealExperiences = Math.ceil(cardCount * 0.75); // 75% maximum from real data
+  const localGemsCount = cardCount - minRealExperiences; // remaining for local gems
 
-TRAVELERS:
+  const activitiesSection = hasRealActivities
+    ? `
+AVAILABLE_EXPERIENCES (unified JSON from Amadeus tours + Google Places):
+\`\`\`json
+${realActivities}
+\`\`\`
+
+EXPERIENCE SCHEMA:
+- source: "amadeus" (bookable tours) or "google_places" (restaurants, attractions)
+- id: Use this as amadeusActivityId in output if source is "amadeus"
+- bookingUrl: Direct booking link (use this in output)
+- pictureUrl: Image URL (use this in output)
+- price.display: Human-readable price
+- location: Address info for the map
+`
+    : "";
+
+  const requirementsSection = hasRealActivities
+    ? `REQUIREMENTS:
+1. USE REAL EXPERIENCES FOR MAJORITY OF CARDS: Select ${minRealExperiences}-${maxRealExperiences} experiences from the AVAILABLE_EXPERIENCES JSON above.
+   - source="amadeus": Bookable tours with real prices - COPY bookingUrl and id exactly
+   - source="google_places": Restaurants/attractions - use for dining and local spots
+   - IMPORTANT: Copy id to amadeusActivityId field, bookingUrl, and pictureUrl EXACTLY from the JSON
+   - Browse through ALL the experiences in the JSON to find the best matches
+
+2. SUPPLEMENT WITH LOCAL KNOWLEDGE: Add ${localGemsCount} free/cheap experiences NOT in the JSON:
+   - Parks, beaches, viewpoints, street exploration
+   - Street food, markets, local cafes
+   - These make the trip feel authentic, not just tourist activities
+
+3. MATCH TO TRAVELERS: Prioritize experiences matching their interests:
 ${travelerLines}
+   - Ensure at least 2 experiences perfectly match the ⭐ GIFT RECIPIENT
 
-${existingSection}
-${categorySection}
+4. BUDGET MIX: Ensure variety in pricing:
+   - Include some free/cheap options (walks, parks, street food)
+   - Include mid-range bookable experiences
+   - 1-2 splurge options for special occasions
 
-REQUIREMENTS:
+5. RARITY reflects uniqueness, NOT price:
+   - common = popular, easy to book
+   - uncommon = lesser-known but real
+   - rare = requires timing or local knowledge
+   - legendary = truly exceptional (use sparingly)`
+    : `REQUIREMENTS:
 1. BUDGET DIVERSITY (this is critical!):
    - 40% FREE experiences (parks, beaches, walks, viewpoints, street exploration)
    - 30% CHEAP experiences (under $20pp - street food, markets, local cafes)
@@ -149,7 +191,22 @@ REQUIREMENTS:
    - common = easy to do, popular spots
    - uncommon = lesser-known local favorites
    - rare = requires timing or local knowledge
-   - legendary = truly once-in-a-lifetime (use sparingly)
+   - legendary = truly once-in-a-lifetime (use sparingly)`;
+
+  return `Create ${cardCount} UNIQUE experience cards for this trip:
+
+DESTINATION: ${destination.name}${destination.country ? `, ${destination.country}` : ""}
+DATES: ${dateRange}
+SEASON: ${season}
+${routeSection}
+
+TRAVELERS:
+${travelerLines}
+${activitiesSection}
+${existingSection}
+${categorySection}
+
+${requirementsSection}
 
 Return a JSON array with exactly this structure for each card:
 [
@@ -164,7 +221,9 @@ Return a JSON array with exactly this structure for each card:
     "bookingMethod": "How to book/organize: 'Book via website', 'Reserve by phone', 'Just show up', 'Bring your own wine and blanket', etc.",
     "bookingUrl": "Direct URL to book or venue website, or null if just show up",
     "locationName": "Venue or spot name for the map pin",
-    "locationAddress": "Full address or landmark description for Google Maps, e.g. 'Table Mountain, Cape Town, South Africa'"
+    "locationAddress": "Full address or landmark description for Google Maps, e.g. 'Table Mountain, Cape Town, South Africa'",
+    "amadeusActivityId": "ID from the real experiences list if selected from there, or null",
+    "pictureUrl": "Image URL from the real experiences list if available, or null"
   }
 ]
 
@@ -189,12 +248,24 @@ You know:
 
 Be specific and practical:
 - Use real venue names and locations
-- Provide costs in LOCAL CURRENCY with USD equivalent: "R150 (~$8)", "€25 (~$27)", "Free"
+- For experiences from AVAILABLE_EXPERIENCES: Use the exact price.display value provided (already in local currency with USD)
+- For your own original ideas: Estimate costs in LOCAL CURRENCY with USD equivalent: "R150 (~$8)", "€25 (~$27)", "Free"
 - Many things should be under $20 or free
 - Include practical tips locals would know
 - Mix famous spots with hidden gems
 
-Remember: The best travel memories often cost nothing.`;
+WEB SEARCH CAPABILITIES:
+- You have access to web search. USE IT to find:
+  - Current opening hours and pricing
+  - Booking URLs for tours and experiences
+  - Recent reviews and recommendations
+  - Seasonal events or festivals
+  - Restaurant menus and reservation links
+- When Amadeus data is provided, use web search to VERIFY and ENRICH the information
+- When no Amadeus data is available, use web search to find REAL, BOOKABLE experiences
+- Always prefer verified, bookable experiences over generic recommendations
+
+Remember: The best travel memories often cost nothing, but when you recommend something paid, make sure it's real and bookable.`;
 
 // Parse AI response into structured cards
 export function parseGeneratedCards(response: string): GeneratedCard[] {
@@ -226,6 +297,8 @@ export function parseGeneratedCards(response: string): GeneratedCard[] {
       bookingUrl: card.bookingUrl && card.bookingUrl !== "null" ? String(card.bookingUrl) : null,
       locationName: card.locationName ? String(card.locationName) : null,
       locationAddress: card.locationAddress ? String(card.locationAddress) : null,
+      amadeusActivityId: card.amadeusActivityId && card.amadeusActivityId !== "null" ? String(card.amadeusActivityId) : null,
+      pictureUrl: card.pictureUrl && card.pictureUrl !== "null" ? String(card.pictureUrl) : null,
     }));
   } catch (error) {
     console.error("Failed to parse AI response:", error);

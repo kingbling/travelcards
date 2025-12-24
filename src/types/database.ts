@@ -4,402 +4,716 @@ export type Json =
   | boolean
   | null
   | { [key: string]: Json | undefined }
-  | Json[];
+  | Json[]
 
-export interface Database {
+export type Database = {
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
+  __InternalSupabase: {
+    PostgrestVersion: "14.1"
+  }
   public: {
     Tables: {
-      journeys: {
-        Row: {
-          id: string;
-          curator_id: string | null;
-          name: string;
-          recipient_name: string | null;
-          recipient_email: string | null;
-          unique_slug: string | null;
-          access_code: string | null;
-          is_published: boolean;
-          published_at: string | null;
-          created_at: string;
-          updated_at: string;
-        };
-        Insert: {
-          id?: string;
-          curator_id?: string | null;
-          name: string;
-          recipient_name?: string | null;
-          recipient_email?: string | null;
-          unique_slug?: string | null;
-          access_code?: string | null;
-          is_published?: boolean;
-          published_at?: string | null;
-          created_at?: string;
-          updated_at?: string;
-        };
-        Update: {
-          id?: string;
-          curator_id?: string | null;
-          name?: string;
-          recipient_name?: string | null;
-          recipient_email?: string | null;
-          unique_slug?: string | null;
-          access_code?: string | null;
-          is_published?: boolean;
-          published_at?: string | null;
-          created_at?: string;
-          updated_at?: string;
-        };
-      };
-      participants: {
-        Row: {
-          id: string;
-          journey_id: string | null;
-          name: string;
-          age: number | null;
-          role: string | null;
-          interests: string[] | null;
-          is_recipient: boolean;
-          order_index: number;
-          created_at: string;
-        };
-        Insert: {
-          id?: string;
-          journey_id?: string | null;
-          name: string;
-          age?: number | null;
-          role?: string | null;
-          interests?: string[] | null;
-          is_recipient?: boolean;
-          order_index?: number;
-          created_at?: string;
-        };
-        Update: {
-          id?: string;
-          journey_id?: string | null;
-          name?: string;
-          age?: number | null;
-          role?: string | null;
-          interests?: string[] | null;
-          is_recipient?: boolean;
-          order_index?: number;
-          created_at?: string;
-        };
-      };
-      destinations: {
-        Row: {
-          id: string;
-          journey_id: string | null;
-          name: string;
-          country: string | null;
-          start_date: string | null;
-          end_date: string | null;
-          theme_colors: Json;
-          order_index: number;
-          created_at: string;
-        };
-        Insert: {
-          id?: string;
-          journey_id?: string | null;
-          name: string;
-          country?: string | null;
-          start_date?: string | null;
-          end_date?: string | null;
-          theme_colors?: Json;
-          order_index?: number;
-          created_at?: string;
-        };
-        Update: {
-          id?: string;
-          journey_id?: string | null;
-          name?: string;
-          country?: string | null;
-          start_date?: string | null;
-          end_date?: string | null;
-          theme_colors?: Json;
-          order_index?: number;
-          created_at?: string;
-        };
-      };
-      chapters: {
-        Row: {
-          id: string;
-          destination_id: string | null;
-          name: string;
-          description: string | null;
-          unlock_date: string | null;
-          reveal_cooldown_hours: number;
-          card_count: number;
-          order_index: number;
-          created_at: string;
-        };
-        Insert: {
-          id?: string;
-          destination_id?: string | null;
-          name: string;
-          description?: string | null;
-          unlock_date?: string | null;
-          reveal_cooldown_hours?: number;
-          card_count?: number;
-          order_index?: number;
-          created_at?: string;
-        };
-        Update: {
-          id?: string;
-          destination_id?: string | null;
-          name?: string;
-          description?: string | null;
-          unlock_date?: string | null;
-          reveal_cooldown_hours?: number;
-          card_count?: number;
-          order_index?: number;
-          created_at?: string;
-        };
-      };
       cards: {
         Row: {
-          id: string;
-          chapter_id: string | null;
-          destination_id: string | null;
-          name: string;
-          description: string | null;
-          category: CardCategory | null;
-          target_profile: TargetProfile | null;
-          rarity: Rarity;
-          estimated_cost: string | null;
-          currency: string;
-          duration_hours: number | null;
-          booking_url: string | null;
-          booking_method: string | null;
-          location_name: string | null;
-          location_address: string | null;
-          is_prebooked: boolean;
-          booking_date: string | null;
-          personal_note: string | null;
-          status: CardStatus;
-          ai_research: Json | null;
-          generation_prompt: string | null;
-          is_revealed: boolean;
-          revealed_at: string | null;
-          order_index: number;
-          created_at: string;
-          updated_at: string;
-        };
+          ai_research: Json | null
+          booking_date: string | null
+          booking_method: string | null
+          booking_url: string | null
+          category: string | null
+          chapter_id: string | null
+          created_at: string | null
+          currency: string | null
+          description: string | null
+          destination_id: string | null
+          duration_hours: number | null
+          estimated_cost: string | null
+          experience_date: string | null
+          generation_prompt: string | null
+          id: string
+          is_admin_preview: boolean | null
+          is_prebooked: boolean | null
+          is_revealed: boolean | null
+          location_address: string | null
+          location_name: string | null
+          name: string
+          order_index: number | null
+          personal_note: string | null
+          rarity: string | null
+          reveal_date: string | null
+          revealed_at: string | null
+          status: string | null
+          target_profile: string | null
+          updated_at: string | null
+        }
         Insert: {
-          id?: string;
-          chapter_id?: string | null;
-          destination_id?: string | null;
-          name: string;
-          description?: string | null;
-          category?: CardCategory | null;
-          target_profile?: TargetProfile | null;
-          rarity?: Rarity;
-          estimated_cost?: string | null;
-          currency?: string;
-          duration_hours?: number | null;
-          booking_url?: string | null;
-          booking_method?: string | null;
-          location_name?: string | null;
-          location_address?: string | null;
-          is_prebooked?: boolean;
-          booking_date?: string | null;
-          personal_note?: string | null;
-          status?: CardStatus;
-          ai_research?: Json | null;
-          generation_prompt?: string | null;
-          is_revealed?: boolean;
-          revealed_at?: string | null;
-          order_index?: number;
-          created_at?: string;
-          updated_at?: string;
-        };
+          ai_research?: Json | null
+          booking_date?: string | null
+          booking_method?: string | null
+          booking_url?: string | null
+          category?: string | null
+          chapter_id?: string | null
+          created_at?: string | null
+          currency?: string | null
+          description?: string | null
+          destination_id?: string | null
+          duration_hours?: number | null
+          estimated_cost?: string | null
+          experience_date?: string | null
+          generation_prompt?: string | null
+          id?: string
+          is_admin_preview?: boolean | null
+          is_prebooked?: boolean | null
+          is_revealed?: boolean | null
+          location_address?: string | null
+          location_name?: string | null
+          name: string
+          order_index?: number | null
+          personal_note?: string | null
+          rarity?: string | null
+          reveal_date?: string | null
+          revealed_at?: string | null
+          status?: string | null
+          target_profile?: string | null
+          updated_at?: string | null
+        }
         Update: {
-          id?: string;
-          chapter_id?: string | null;
-          destination_id?: string | null;
-          name?: string;
-          description?: string | null;
-          category?: CardCategory | null;
-          target_profile?: TargetProfile | null;
-          rarity?: Rarity;
-          estimated_cost?: string | null;
-          currency?: string;
-          duration_hours?: number | null;
-          booking_url?: string | null;
-          booking_method?: string | null;
-          location_name?: string | null;
-          location_address?: string | null;
-          is_prebooked?: boolean;
-          booking_date?: string | null;
-          personal_note?: string | null;
-          status?: CardStatus;
-          ai_research?: Json | null;
-          generation_prompt?: string | null;
-          is_revealed?: boolean;
-          revealed_at?: string | null;
-          order_index?: number;
-          created_at?: string;
-          updated_at?: string;
-        };
-      };
-      reveals: {
+          ai_research?: Json | null
+          booking_date?: string | null
+          booking_method?: string | null
+          booking_url?: string | null
+          category?: string | null
+          chapter_id?: string | null
+          created_at?: string | null
+          currency?: string | null
+          description?: string | null
+          destination_id?: string | null
+          duration_hours?: number | null
+          estimated_cost?: string | null
+          experience_date?: string | null
+          generation_prompt?: string | null
+          id?: string
+          is_admin_preview?: boolean | null
+          is_prebooked?: boolean | null
+          is_revealed?: boolean | null
+          location_address?: string | null
+          location_name?: string | null
+          name?: string
+          order_index?: number | null
+          personal_note?: string | null
+          rarity?: string | null
+          reveal_date?: string | null
+          revealed_at?: string | null
+          status?: string | null
+          target_profile?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cards_chapter_id_fkey"
+            columns: ["chapter_id"]
+            isOneToOne: false
+            referencedRelation: "chapters"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cards_destination_id_fkey"
+            columns: ["destination_id"]
+            isOneToOne: false
+            referencedRelation: "destinations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      chapters: {
         Row: {
-          id: string;
-          card_id: string | null;
-          revealed_at: string;
-        };
+          card_count: number | null
+          created_at: string | null
+          description: string | null
+          destination_id: string | null
+          id: string
+          name: string
+          order_index: number | null
+          reveal_cooldown_hours: number | null
+          unlock_date: string | null
+        }
         Insert: {
-          id?: string;
-          card_id?: string | null;
-          revealed_at?: string;
-        };
+          card_count?: number | null
+          created_at?: string | null
+          description?: string | null
+          destination_id?: string | null
+          id?: string
+          name: string
+          order_index?: number | null
+          reveal_cooldown_hours?: number | null
+          unlock_date?: string | null
+        }
         Update: {
-          id?: string;
-          card_id?: string | null;
-          revealed_at?: string;
-        };
-      };
-      love_letters: {
+          card_count?: number | null
+          created_at?: string | null
+          description?: string | null
+          destination_id?: string | null
+          id?: string
+          name?: string
+          order_index?: number | null
+          reveal_cooldown_hours?: number | null
+          unlock_date?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chapters_destination_id_fkey"
+            columns: ["destination_id"]
+            isOneToOne: false
+            referencedRelation: "destinations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      destinations: {
         Row: {
-          id: string;
-          journey_id: string | null;
-          title: string;
-          content: string;
-          display_on: DisplayOn | null;
-          chapter_id: string | null;
-          destination_id: string | null;
-          order_index: number;
-          created_at: string;
-        };
+          country: string | null
+          created_at: string | null
+          destination_type: string | null
+          end_date: string | null
+          end_location: string | null
+          id: string
+          journey_id: string | null
+          name: string
+          order_index: number | null
+          start_date: string | null
+          start_location: string | null
+          theme_colors: Json | null
+          transport_mode: string | null
+        }
         Insert: {
-          id?: string;
-          journey_id?: string | null;
-          title: string;
-          content: string;
-          display_on?: DisplayOn | null;
-          chapter_id?: string | null;
-          destination_id?: string | null;
-          order_index?: number;
-          created_at?: string;
-        };
+          country?: string | null
+          created_at?: string | null
+          destination_type?: string | null
+          end_date?: string | null
+          end_location?: string | null
+          id?: string
+          journey_id?: string | null
+          name: string
+          order_index?: number | null
+          start_date?: string | null
+          start_location?: string | null
+          theme_colors?: Json | null
+          transport_mode?: string | null
+        }
         Update: {
-          id?: string;
-          journey_id?: string | null;
-          title?: string;
-          content?: string;
-          display_on?: DisplayOn | null;
-          chapter_id?: string | null;
-          destination_id?: string | null;
-          order_index?: number;
-          created_at?: string;
-        };
-      };
+          country?: string | null
+          created_at?: string | null
+          destination_type?: string | null
+          end_date?: string | null
+          end_location?: string | null
+          id?: string
+          journey_id?: string | null
+          name?: string
+          order_index?: number | null
+          start_date?: string | null
+          start_location?: string | null
+          theme_colors?: Json | null
+          transport_mode?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "destinations_journey_id_fkey"
+            columns: ["journey_id"]
+            isOneToOne: false
+            referencedRelation: "journeys"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       email_preferences: {
         Row: {
-          id: string;
-          journey_id: string | null;
-          email: string;
-          journey_start: boolean;
-          chapter_unlocked: boolean;
-          card_ready: boolean;
-          weekly_digest: boolean;
-          booking_reminder: boolean;
-          booking_reminder_days: number;
-          is_verified: boolean;
-          last_sent_at: string | null;
-          created_at: string;
-        };
+          booking_reminder: boolean | null
+          booking_reminder_days: number | null
+          card_ready: boolean | null
+          chapter_unlocked: boolean | null
+          created_at: string | null
+          email: string
+          id: string
+          is_verified: boolean | null
+          journey_id: string | null
+          journey_start: boolean | null
+          last_sent_at: string | null
+          weekly_digest: boolean | null
+        }
         Insert: {
-          id?: string;
-          journey_id?: string | null;
-          email: string;
-          journey_start?: boolean;
-          chapter_unlocked?: boolean;
-          card_ready?: boolean;
-          weekly_digest?: boolean;
-          booking_reminder?: boolean;
-          booking_reminder_days?: number;
-          is_verified?: boolean;
-          last_sent_at?: string | null;
-          created_at?: string;
-        };
+          booking_reminder?: boolean | null
+          booking_reminder_days?: number | null
+          card_ready?: boolean | null
+          chapter_unlocked?: boolean | null
+          created_at?: string | null
+          email: string
+          id?: string
+          is_verified?: boolean | null
+          journey_id?: string | null
+          journey_start?: boolean | null
+          last_sent_at?: string | null
+          weekly_digest?: boolean | null
+        }
         Update: {
-          id?: string;
-          journey_id?: string | null;
-          email?: string;
-          journey_start?: boolean;
-          chapter_unlocked?: boolean;
-          card_ready?: boolean;
-          weekly_digest?: boolean;
-          booking_reminder?: boolean;
-          booking_reminder_days?: number;
-          is_verified?: boolean;
-          last_sent_at?: string | null;
-          created_at?: string;
-        };
-      };
+          booking_reminder?: boolean | null
+          booking_reminder_days?: number | null
+          card_ready?: boolean | null
+          chapter_unlocked?: boolean | null
+          created_at?: string | null
+          email?: string
+          id?: string
+          is_verified?: boolean | null
+          journey_id?: string | null
+          journey_start?: boolean | null
+          last_sent_at?: string | null
+          weekly_digest?: boolean | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_preferences_journey_id_fkey"
+            columns: ["journey_id"]
+            isOneToOne: false
+            referencedRelation: "journeys"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      journeys: {
+        Row: {
+          access_code: string | null
+          advance_reveal_days: number | null
+          created_at: string | null
+          curator_id: string | null
+          id: string
+          is_published: boolean | null
+          name: string
+          published_at: string | null
+          recipient_email: string | null
+          recipient_name: string | null
+          reveal_first_immediately: boolean | null
+          reveals_per_week: number | null
+          unique_slug: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          access_code?: string | null
+          advance_reveal_days?: number | null
+          created_at?: string | null
+          curator_id?: string | null
+          id?: string
+          is_published?: boolean | null
+          name: string
+          published_at?: string | null
+          recipient_email?: string | null
+          recipient_name?: string | null
+          reveal_first_immediately?: boolean | null
+          reveals_per_week?: number | null
+          unique_slug?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          access_code?: string | null
+          advance_reveal_days?: number | null
+          created_at?: string | null
+          curator_id?: string | null
+          id?: string
+          is_published?: boolean | null
+          name?: string
+          published_at?: string | null
+          recipient_email?: string | null
+          recipient_name?: string | null
+          reveal_first_immediately?: boolean | null
+          reveals_per_week?: number | null
+          unique_slug?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      love_letters: {
+        Row: {
+          chapter_id: string | null
+          content: string
+          created_at: string | null
+          destination_id: string | null
+          display_on: string | null
+          id: string
+          journey_id: string | null
+          order_index: number | null
+          title: string
+        }
+        Insert: {
+          chapter_id?: string | null
+          content: string
+          created_at?: string | null
+          destination_id?: string | null
+          display_on?: string | null
+          id?: string
+          journey_id?: string | null
+          order_index?: number | null
+          title: string
+        }
+        Update: {
+          chapter_id?: string | null
+          content?: string
+          created_at?: string | null
+          destination_id?: string | null
+          display_on?: string | null
+          id?: string
+          journey_id?: string | null
+          order_index?: number | null
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "love_letters_chapter_id_fkey"
+            columns: ["chapter_id"]
+            isOneToOne: false
+            referencedRelation: "chapters"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "love_letters_destination_id_fkey"
+            columns: ["destination_id"]
+            isOneToOne: false
+            referencedRelation: "destinations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "love_letters_journey_id_fkey"
+            columns: ["journey_id"]
+            isOneToOne: false
+            referencedRelation: "journeys"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       memories: {
         Row: {
-          id: string;
-          card_id: string | null;
-          note: string | null;
-          rating: number | null;
-          completed_at: string | null;
-          created_at: string;
-          updated_at: string;
-        };
+          card_id: string | null
+          completed_at: string | null
+          created_at: string | null
+          id: string
+          note: string | null
+          rating: number | null
+          updated_at: string | null
+        }
         Insert: {
-          id?: string;
-          card_id?: string | null;
-          note?: string | null;
-          rating?: number | null;
-          completed_at?: string | null;
-          created_at?: string;
-          updated_at?: string;
-        };
+          card_id?: string | null
+          completed_at?: string | null
+          created_at?: string | null
+          id?: string
+          note?: string | null
+          rating?: number | null
+          updated_at?: string | null
+        }
         Update: {
-          id?: string;
-          card_id?: string | null;
-          note?: string | null;
-          rating?: number | null;
-          completed_at?: string | null;
-          created_at?: string;
-          updated_at?: string;
-        };
-      };
+          card_id?: string | null
+          completed_at?: string | null
+          created_at?: string | null
+          id?: string
+          note?: string | null
+          rating?: number | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "memories_card_id_fkey"
+            columns: ["card_id"]
+            isOneToOne: false
+            referencedRelation: "cards"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       memory_photos: {
         Row: {
-          id: string;
-          memory_id: string | null;
-          storage_path: string;
-          caption: string | null;
-          order_index: number;
-          created_at: string;
-        };
+          caption: string | null
+          created_at: string | null
+          id: string
+          memory_id: string | null
+          order_index: number | null
+          storage_path: string
+        }
         Insert: {
-          id?: string;
-          memory_id?: string | null;
-          storage_path: string;
-          caption?: string | null;
-          order_index?: number;
-          created_at?: string;
-        };
+          caption?: string | null
+          created_at?: string | null
+          id?: string
+          memory_id?: string | null
+          order_index?: number | null
+          storage_path: string
+        }
         Update: {
-          id?: string;
-          memory_id?: string | null;
-          storage_path?: string;
-          caption?: string | null;
-          order_index?: number;
-          created_at?: string;
-        };
-      };
-    };
-    Views: {};
-    Functions: {};
-    Enums: {};
-  };
+          caption?: string | null
+          created_at?: string | null
+          id?: string
+          memory_id?: string | null
+          order_index?: number | null
+          storage_path?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "memory_photos_memory_id_fkey"
+            columns: ["memory_id"]
+            isOneToOne: false
+            referencedRelation: "memories"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      participants: {
+        Row: {
+          age: number | null
+          created_at: string | null
+          id: string
+          interests: string[] | null
+          is_recipient: boolean | null
+          journey_id: string | null
+          name: string
+          order_index: number | null
+          role: string | null
+        }
+        Insert: {
+          age?: number | null
+          created_at?: string | null
+          id?: string
+          interests?: string[] | null
+          is_recipient?: boolean | null
+          journey_id?: string | null
+          name: string
+          order_index?: number | null
+          role?: string | null
+        }
+        Update: {
+          age?: number | null
+          created_at?: string | null
+          id?: string
+          interests?: string[] | null
+          is_recipient?: boolean | null
+          journey_id?: string | null
+          name?: string
+          order_index?: number | null
+          role?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "participants_journey_id_fkey"
+            columns: ["journey_id"]
+            isOneToOne: false
+            referencedRelation: "journeys"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      reveals: {
+        Row: {
+          card_id: string | null
+          id: string
+          revealed_at: string | null
+        }
+        Insert: {
+          card_id?: string | null
+          id?: string
+          revealed_at?: string | null
+        }
+        Update: {
+          card_id?: string | null
+          id?: string
+          revealed_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reveals_card_id_fkey"
+            columns: ["card_id"]
+            isOneToOne: false
+            referencedRelation: "cards"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      waypoints: {
+        Row: {
+          created_at: string | null
+          day_number: number | null
+          description: string | null
+          destination_id: string | null
+          id: string
+          location: string | null
+          name: string
+          order_index: number | null
+        }
+        Insert: {
+          created_at?: string | null
+          day_number?: number | null
+          description?: string | null
+          destination_id?: string | null
+          id?: string
+          location?: string | null
+          name: string
+          order_index?: number | null
+        }
+        Update: {
+          created_at?: string | null
+          day_number?: number | null
+          description?: string | null
+          destination_id?: string | null
+          id?: string
+          location?: string | null
+          name?: string
+          order_index?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "waypoints_destination_id_fkey"
+            columns: ["destination_id"]
+            isOneToOne: false
+            referencedRelation: "destinations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      [_ in never]: never
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
 }
 
-// Enum types
+type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
+
+type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
+
+export type Tables<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+        DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+      DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
+      Row: infer R
+    }
+    ? R
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])
+    ? (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
+        Row: infer R
+      }
+      ? R
+      : never
+    : never
+
+export type TablesInsert<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Insert: infer I
+    }
+    ? I
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Insert: infer I
+      }
+      ? I
+      : never
+    : never
+
+export type TablesUpdate<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Update: infer U
+    }
+    ? U
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Update: infer U
+      }
+      ? U
+      : never
+    : never
+
+export type Enums<
+  DefaultSchemaEnumNameOrOptions extends
+    | keyof DefaultSchema["Enums"]
+    | { schema: keyof DatabaseWithoutInternals },
+  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
+    : never = never,
+> = DefaultSchemaEnumNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
+  : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
+    ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
+    : never
+
+export type CompositeTypes<
+  PublicCompositeTypeNameOrOptions extends
+    | keyof DefaultSchema["CompositeTypes"]
+    | { schema: keyof DatabaseWithoutInternals },
+  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
+    : never = never,
+> = PublicCompositeTypeNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
+  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
+    ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
+    : never
+
+export const Constants = {
+  public: {
+    Enums: {},
+  },
+} as const
+
+// ==========================================
+// Convenience Types
+// ==========================================
+
 export type CardCategory =
   | "food"
   | "wine"
@@ -432,6 +746,32 @@ export type EmailPreference = Database["public"]["Tables"]["email_preferences"][
 export type Memory = Database["public"]["Tables"]["memories"]["Row"];
 export type MemoryPhoto = Database["public"]["Tables"]["memory_photos"]["Row"];
 
+// Treats types (journey-wide surprises)
+export type Treat = {
+  id: string;
+  journey_id: string;
+  destination_id: string | null; // null = all destinations
+  name: string;
+  description: string | null;
+  category: string | null;
+  rarity: string | null;
+  picture_url: string | null;
+  estimated_cost: string | null;
+  generation_prompt: string | null;
+  is_revealed: boolean | null;
+  revealed_at: string | null;
+  order_index: number | null;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
+export type TreatReveal = {
+  id: string;
+  treat_id: string;
+  journey_id: string;
+  revealed_at: string | null;
+};
+
 // Extended types with relations
 export type ChapterWithCards = Chapter & {
   cards: Card[];
@@ -442,86 +782,58 @@ export type DestinationWithChapters = Destination & {
 };
 
 export type JourneyWithDestinations = Journey & {
-  participants: Participant[];
   destinations: DestinationWithChapters[];
-  love_letters: LoveLetter[];
+  participants: Participant[];
 };
 
-export type CardWithMemory = Card & {
-  memory?: Memory & {
-    photos: MemoryPhoto[];
-  };
+// Config objects for UI
+export const CATEGORY_CONFIG: Record<
+  CardCategory,
+  { icon: string; label: string; color: string }
+> = {
+  food: { icon: "🍽️", label: "Food & Dining", color: "#E07B39" },
+  wine: { icon: "🍷", label: "Wine & Drinks", color: "#8B4513" },
+  animals: { icon: "🦁", label: "Wildlife", color: "#228B22" },
+  art: { icon: "🎨", label: "Art & Museums", color: "#9932CC" },
+  nature: { icon: "🌿", label: "Nature", color: "#2E8B57" },
+  culture: { icon: "🏛️", label: "Culture", color: "#B8860B" },
+  adventure: { icon: "🧗", label: "Adventure", color: "#DC143C" },
+  family: { icon: "👨‍👩‍👧‍👦", label: "Family Fun", color: "#4169E1" },
+  spa: { icon: "💆", label: "Spa & Wellness", color: "#DB7093" },
+  music: { icon: "🎵", label: "Music & Shows", color: "#FF6347" },
 };
 
-// Theme colors type
-export interface ThemeColors {
-  primary: string;
-  secondary: string;
-  accent?: string;
+export const RARITY_CONFIG: Record<
+  Rarity,
+  { label: string; color: string; bgColor: string }
+> = {
+  common: { label: "Common", color: "#6B7280", bgColor: "#F3F4F6" },
+  uncommon: { label: "Uncommon", color: "#059669", bgColor: "#D1FAE5" },
+  rare: { label: "Rare", color: "#3B82F6", bgColor: "#DBEAFE" },
+  legendary: { label: "Legendary", color: "#C9A227", bgColor: "#FEF3C7" },
+};
+
+export const PROFILE_CONFIG: Record<
+  TargetProfile,
+  { label: string; icon: string; color: string }
+> = {
+  solo: { label: "Solo", icon: "👤", color: "#8B5CF6" },
+  couple: { label: "Couple", icon: "👫", color: "#EC4899" },
+  family: { label: "Family", icon: "👨‍👩‍👧", color: "#10B981" },
+  kids: { label: "Kids", icon: "🧒", color: "#F59E0B" },
+};
+
+// Helper function to safely get rarity config
+export function getRarityConfig(rarity: string | null) {
+  return RARITY_CONFIG[(rarity as Rarity) || "common"];
 }
 
-// Rarity configuration
-export const RARITY_CONFIG: Record<Rarity, { label: string; color: string; bgColor: string; glowClass: string }> = {
-  common: {
-    label: "Common",
-    color: "#6B7280",
-    bgColor: "#F3F4F6",
-    glowClass: "card-glow-common",
-  },
-  uncommon: {
-    label: "Uncommon",
-    color: "#059669",
-    bgColor: "#D1FAE5",
-    glowClass: "card-glow-uncommon",
-  },
-  rare: {
-    label: "Rare",
-    color: "#3B82F6",
-    bgColor: "#DBEAFE",
-    glowClass: "card-glow-rare",
-  },
-  legendary: {
-    label: "Legendary",
-    color: "#C9A227",
-    bgColor: "#FEF3C7",
-    glowClass: "card-glow-legendary",
-  },
-};
+// Helper function to safely get category config  
+export function getCategoryConfig(category: string | null) {
+  return CATEGORY_CONFIG[(category as CardCategory) || "culture"];
+}
 
-// Profile configuration
-export const PROFILE_CONFIG: Record<TargetProfile, { label: string; icon: string; color: string }> = {
-  solo: {
-    label: "Solo",
-    icon: "👩",
-    color: "#8B5CF6",
-  },
-  couple: {
-    label: "Date Night",
-    icon: "💑",
-    color: "#EC4899",
-  },
-  family: {
-    label: "Family",
-    icon: "👨‍👩‍👧‍👧",
-    color: "#10B981",
-  },
-  kids: {
-    label: "Kids",
-    icon: "👧👧",
-    color: "#F59E0B",
-  },
-};
-
-// Category configuration
-export const CATEGORY_CONFIG: Record<CardCategory, { label: string; icon: string }> = {
-  food: { label: "Food", icon: "🍽️" },
-  wine: { label: "Wine", icon: "🍷" },
-  animals: { label: "Animals", icon: "🐧" },
-  art: { label: "Art", icon: "🎨" },
-  nature: { label: "Nature", icon: "🌿" },
-  culture: { label: "Culture", icon: "🏛️" },
-  adventure: { label: "Adventure", icon: "🏔️" },
-  family: { label: "Family Fun", icon: "🎉" },
-  spa: { label: "Spa & Wellness", icon: "💆" },
-  music: { label: "Music", icon: "🎵" },
-};
+// Helper function to safely get profile config
+export function getProfileConfig(profile: string | null) {
+  return PROFILE_CONFIG[(profile as TargetProfile) || "family"];
+}

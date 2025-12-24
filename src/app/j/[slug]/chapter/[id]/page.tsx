@@ -13,8 +13,10 @@ import {
 import { Chapter, Card as CardType, Destination } from "@/types/database";
 import { Card } from "@/components/Card";
 import { CardReveal } from "@/components/CardReveal";
-import { RARITY_CONFIG } from "@/types/database";
-import { ExperienceCard } from "@/types";
+import { RARITY_CONFIG, getRarityConfig } from "@/types/database";
+import { ExperienceCard, Category, TargetProfile, Rarity } from "@/types";
+import { useJourneyAuth } from "@/hooks/useJourneyAuth";
+import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 
 interface ChapterData extends Chapter {
   destination: Destination;
@@ -27,11 +29,11 @@ function toExperienceCard(card: CardType, destinationColors: { primary: string; 
     id: card.id,
     name: card.name,
     description: card.description || "",
-    category: card.category || "adventure",
-    targetProfile: card.target_profile || "family",
-    rarity: card.rarity,
+    category: (card.category || "adventure") as Category,
+    targetProfile: (card.target_profile || "family") as TargetProfile,
+    rarity: (card.rarity || "common") as Rarity,
     estimatedCost: card.estimated_cost || undefined,
-    currency: card.currency,
+    currency: card.currency || undefined,
     durationHours: card.duration_hours || undefined,
     bookingUrl: card.booking_url || undefined,
     personalNote: card.personal_note || undefined,
@@ -52,13 +54,7 @@ export default function ChapterPage() {
   const [revealingCard, setRevealingCard] = useState<CardType | null>(null);
   const [cooldownRemaining, setCooldownRemaining] = useState<number | null>(null);
 
-  // Check authentication
-  useEffect(() => {
-    const authenticated = sessionStorage.getItem(`journey-${slug}-authenticated`);
-    if (authenticated !== "true") {
-      router.replace(`/j/${slug}`);
-    }
-  }, [slug, router]);
+  const { isAuthenticated, isLoading: authLoading } = useJourneyAuth({ slug });
 
   // Fetch chapter data
   const fetchChapter = useCallback(async () => {
@@ -145,18 +141,8 @@ export default function ChapterPage() {
     };
   };
 
-  if (loading) {
-    return (
-      <main className="min-h-screen flex items-center justify-center bg-gradient-to-b from-[#FDF8F3] to-[#FAF0E6]">
-        <motion.div
-          className="text-[#C9A227]"
-          animate={{ rotate: 360 }}
-          transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-        >
-          <Heart className="w-8 h-8" />
-        </motion.div>
-      </main>
-    );
+  if (loading || authLoading) {
+    return <LoadingSpinner />;
   }
 
   if (!chapter) {
@@ -323,11 +309,11 @@ export default function ChapterPage() {
                         <span
                           className="text-xs font-medium px-2 py-0.5 rounded-full"
                           style={{
-                            backgroundColor: RARITY_CONFIG[card.rarity].bgColor,
-                            color: RARITY_CONFIG[card.rarity].color,
+                            backgroundColor: getRarityConfig(card.rarity).bgColor,
+                            color: getRarityConfig(card.rarity).color,
                           }}
                         >
-                          {RARITY_CONFIG[card.rarity].label}
+                          {getRarityConfig(card.rarity).label}
                         </span>
                         {card.category && (
                           <span className="text-xs text-[#6B5344]">

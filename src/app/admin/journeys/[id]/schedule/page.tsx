@@ -13,7 +13,9 @@ import {
   Clock,
   Sparkles,
   Check,
+  RotateCcw,
 } from "lucide-react";
+import { ResetButton } from "@/components/admin/ResetButton";
 
 interface Card {
   id: string;
@@ -34,6 +36,7 @@ interface Journey {
   name: string;
   reveals_per_week: number | null;
   advance_reveal_days: number | null;
+  treats_per_week: number | null;
 }
 
 export default function SchedulePage() {
@@ -49,6 +52,7 @@ export default function SchedulePage() {
   // Settings
   const [revealsPerWeek, setRevealsPerWeek] = useState(2);
   const [advanceRevealDays, setAdvanceRevealDays] = useState(7);
+  const [treatsPerWeek, setTreatsPerWeek] = useState(1);
 
   useEffect(() => {
     loadData();
@@ -60,14 +64,16 @@ export default function SchedulePage() {
     // Load journey settings
     const { data: journeyData } = await supabase
       .from("journeys")
-      .select("id, name, reveals_per_week, advance_reveal_days")
+      .select("id, name, reveals_per_week, advance_reveal_days, treats_per_week")
       .eq("id", journeyId)
       .single();
 
     if (journeyData) {
-      setJourney(journeyData);
-      setRevealsPerWeek(journeyData.reveals_per_week ?? 2);
-      setAdvanceRevealDays(journeyData.advance_reveal_days ?? 7);
+      const journey = journeyData as unknown as Journey;
+      setJourney(journey);
+      setRevealsPerWeek(journey.reveals_per_week ?? 2);
+      setAdvanceRevealDays(journey.advance_reveal_days ?? 7);
+      setTreatsPerWeek(journey.treats_per_week ?? 1);
     }
 
     // Load all approved cards with schedule info
@@ -103,6 +109,7 @@ export default function SchedulePage() {
       .update({
         reveals_per_week: revealsPerWeek,
         advance_reveal_days: advanceRevealDays,
+        treats_per_week: treatsPerWeek,
       })
       .eq("id", journeyId);
 
@@ -188,7 +195,7 @@ export default function SchedulePage() {
       <div className="bg-white rounded-2xl shadow-sm p-6 mb-8">
         <h2 className="font-serif text-xl text-[#2C1810] mb-4">Schedule Settings</h2>
 
-        <div className="grid md:grid-cols-2 gap-6">
+        <div className="grid md:grid-cols-3 gap-6">
           <div>
             <label className="block text-sm font-medium text-[#2C1810] mb-2">
               Reveals per week
@@ -228,6 +235,26 @@ export default function SchedulePage() {
               How early cards are revealed so you can plan
             </p>
           </div>
+
+          <div>
+            <label className="block text-sm font-medium text-[#2C1810] mb-2">
+              Treats per week
+            </label>
+            <select
+              value={treatsPerWeek}
+              onChange={(e) => setTreatsPerWeek(parseInt(e.target.value))}
+              className="w-full px-4 py-3 rounded-xl border border-[#E5DDD5] focus:border-[#C9A227] outline-none"
+            >
+              <option value={1}>1 treat per week</option>
+              <option value={2}>2 treats per week</option>
+              <option value={3}>3 treats per week</option>
+              <option value={4}>4 treats per week</option>
+              <option value={5}>5 treats per week</option>
+            </select>
+            <p className="text-sm text-[#6B5344] mt-1">
+              Small surprises the recipient can unlock each week
+            </p>
+          </div>
         </div>
 
         <button
@@ -237,6 +264,26 @@ export default function SchedulePage() {
         >
           {isSaving ? "Saving..." : "Save Settings"}
         </button>
+
+        {/* Reset Section */}
+        <div className="mt-6 p-4 bg-amber-50 border border-amber-200 rounded-xl">
+          <div className="flex items-start justify-between">
+            <div className="flex items-center gap-3">
+              <RotateCcw className="w-5 h-5 text-amber-700 flex-shrink-0 mt-0.5" />
+              <div>
+                <span className="font-medium text-amber-900 block">Reset Journey Reveals</span>
+                <p className="text-sm text-amber-700 mt-0.5">
+                  Clear all reveals and recalculate dates based on these settings
+                </p>
+              </div>
+            </div>
+            <ResetButton
+              journeyId={journeyId}
+              variant="inline"
+              onResetComplete={loadData}
+            />
+          </div>
+        </div>
       </div>
 
       {/* Schedule Timeline */}

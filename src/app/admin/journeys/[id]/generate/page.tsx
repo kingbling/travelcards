@@ -22,8 +22,11 @@ import {
   ExternalLink,
   Info,
   Brain,
+  Database,
+  Search,
+  FileText,
 } from "lucide-react";
-import { CATEGORY_CONFIG, RARITY_CONFIG, PROFILE_CONFIG } from "@/types/database";
+import { CATEGORY_CONFIG, RARITY_CONFIG, PROFILE_CONFIG, getRarityConfig } from "@/types/database";
 import type { CardCategory, TargetProfile, Rarity } from "@/types/database";
 
 interface Destination {
@@ -65,6 +68,19 @@ interface GeneratedCard {
   bookingUrl: string | null;
   locationName: string | null;
   locationAddress: string | null;
+  amadeusActivityId: string | null;
+  pictureUrl: string | null;
+}
+
+interface GenerationStats {
+  requested: number;
+  generated: number;
+  afterDedup: number;
+  existingCount: number;
+  fromRealExperiences: number;
+  hasRealActivities: boolean;
+  amadeusCount: number;
+  googlePlacesCount: number;
 }
 
 interface UsageInfo {
@@ -86,13 +102,25 @@ export default function GenerateCardsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [step, setStep] = useState<Step>("select");
   const [selectedDestination, setSelectedDestination] = useState<Destination | null>(null);
-  const [cardCount, setCardCount] = useState(8);
+  const [cardCount, setCardCount] = useState(12);
   const [prompt, setPrompt] = useState("");
   const [isEditing, setIsEditing] = useState(false);
   const [generatedCards, setGeneratedCards] = useState<GeneratedCard[]>([]);
   const [usage, setUsage] = useState<UsageInfo | null>(null);
+  const [stats, setStats] = useState<GenerationStats | null>(null);
+  const [hasRealActivities, setHasRealActivities] = useState(false);
+  const [amadeusCount, setAmadeusCount] = useState(0);
+  const [googlePlacesCount, setGooglePlacesCount] = useState(0);
+  const [fullPrompt, setFullPrompt] = useState<string | null>(null);
+  const [researchData, setResearchData] = useState<{
+    amadeus: unknown[];
+    googlePlaces: unknown[];
+    combined: unknown[];
+  } | null>(null);
   const [thinking, setThinking] = useState<string | null>(null);
   const [showThinking, setShowThinking] = useState(false);
+  const [showInputData, setShowInputData] = useState(false);
+  const [showResearchData, setShowResearchData] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const hasFetched = useRef(false);
@@ -209,13 +237,21 @@ GENERATE: ${cardCount} unique experience cards tailored to this group`;
             try {
               const data = JSON.parse(line.slice(6));
 
-              if (data.type === "thinking") {
+              if (data.type === "init") {
+                // Check if we have real activities and store full prompt
+                setHasRealActivities(data.hasRealActivities || false);
+                setAmadeusCount(data.amadeusCount || 0);
+                setGooglePlacesCount(data.googlePlacesCount || 0);
+                setFullPrompt(data.prompt || null);
+                setResearchData(data.researchData || null);
+              } else if (data.type === "thinking") {
                 // Update thinking in real-time
                 setThinking(prev => (prev || "") + data.content);
               } else if (data.type === "complete") {
                 // Generation complete
                 setGeneratedCards(data.cards);
                 setUsage(data.usage);
+                setStats(data.stats);
                 setStep("review");
               } else if (data.type === "error") {
                 throw new Error(data.error);
@@ -433,7 +469,7 @@ GENERATE: ${cardCount} unique experience cards tailored to this group`;
               <div className="mt-4 flex items-center gap-4">
                 <label className="text-sm text-[#6B5344]">Number of cards:</label>
                 <div className="flex items-center gap-2">
-                  {[4, 6, 8, 10, 12].map((n) => (
+                  {[8, 12, 16, 20].map((n) => (
                     <button
                       key={n}
                       onClick={() => {
@@ -485,30 +521,72 @@ GENERATE: ${cardCount} unique experience cards tailored to this group`;
       {step === "generating" && (
         <div className="space-y-6">
           {/* Header */}
-          <div className="text-center">
-            <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-br from-[#E07B39] to-[#C9A227] flex items-center justify-center animate-pulse">
-              <Brain className="w-8 h-8 text-white" />
+          <div className="flex items-center gap-4 p-4 bg-white rounded-xl border border-[#E5DDD5]">
+            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-[#E07B39] to-[#C9A227] flex items-center justify-center">
+              <Loader2 className="w-6 h-6 text-white animate-spin" />
             </div>
-            <h2 className="font-serif text-2xl text-[#2C1810] mb-2">AI is thinking...</h2>
-            <p className="text-[#6B5344]">
-              Curating experiences for {selectedDestination?.name}
-            </p>
+            <div className="flex-1">
+              <h2 className="font-serif text-xl text-[#2C1810]">Generating for {selectedDestination?.name}</h2>
+              <div className="flex items-center gap-2 mt-1 flex-wrap">
+                {amadeusCount > 0 && (
+                  <span className="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded-full flex items-center gap-1">
+                    <Database className="w-3 h-3" />
+                    {amadeusCount} Amadeus activities
+                  </span>
+                )}
+                {googlePlacesCount > 0 && (
+                  <span className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full flex items-center gap-1">
+                    <MapPin className="w-3 h-3" />
+                    {googlePlacesCount} Google Places
+                  </span>
+                )}
+                {amadeusCount === 0 && googlePlacesCount === 0 && (
+                  <span className="text-xs px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full flex items-center gap-1">
+                    <Search className="w-3 h-3" />
+                    Using web search + AI knowledge
+                  </span>
+                )}
+              </div>
+            </div>
           </div>
 
-          {/* Real-time thinking display */}
-          <div className="bg-gradient-to-r from-purple-50 to-blue-50 rounded-xl border border-purple-200 overflow-hidden">
-            <div className="p-4 border-b border-purple-200 flex items-center gap-2">
-              <Brain className="w-5 h-5 text-purple-600 animate-pulse" />
-              <span className="font-medium text-purple-900">AI Reasoning (Live)</span>
-              <Loader2 className="w-4 h-4 animate-spin text-purple-600 ml-auto" />
+          {/* Tabs for Input Data vs Thinking */}
+          <div className="bg-white rounded-xl border border-[#E5DDD5] overflow-hidden">
+            <div className="flex border-b border-[#E5DDD5]">
+              <button
+                onClick={() => setShowInputData(false)}
+                className={`flex-1 px-4 py-3 text-sm font-medium flex items-center justify-center gap-2 transition-colors ${
+                  !showInputData
+                    ? "bg-[#2C1810] text-white"
+                    : "text-[#6B5344] hover:bg-[#FDF8F3]"
+                }`}
+              >
+                <Brain className="w-4 h-4" />
+                AI Thinking
+                <Loader2 className="w-3 h-3 animate-spin" />
+              </button>
+              <button
+                onClick={() => setShowInputData(true)}
+                className={`flex-1 px-4 py-3 text-sm font-medium flex items-center justify-center gap-2 transition-colors ${
+                  showInputData
+                    ? "bg-[#2C1810] text-white"
+                    : "text-[#6B5344] hover:bg-[#FDF8F3]"
+                }`}
+              >
+                <FileText className="w-4 h-4" />
+                Input Data
+              </button>
             </div>
-            <div className="p-4 max-h-96 overflow-y-auto">
-              {thinking ? (
-                <pre className="whitespace-pre-wrap text-sm text-purple-900 font-mono leading-relaxed">
-                  {thinking}
+
+            <div className="p-4 max-h-[500px] overflow-y-auto bg-[#1a1a1a]">
+              {showInputData ? (
+                <pre className="whitespace-pre-wrap text-sm text-gray-300 font-mono leading-relaxed">
+                  {fullPrompt || "Loading prompt..."}
                 </pre>
               ) : (
-                <p className="text-purple-600 text-sm italic">Waiting for AI to start thinking...</p>
+                <pre className="whitespace-pre-wrap text-sm text-green-400 font-mono leading-relaxed">
+                  {thinking || "Waiting for AI to start thinking..."}
+                </pre>
               )}
             </div>
           </div>
@@ -524,11 +602,40 @@ GENERATE: ${cardCount} unique experience cards tailored to this group`;
                 Generated {generatedCards.length} Cards
               </h2>
               <p className="text-[#6B5344]">for {selectedDestination?.name}</p>
+              {stats && (
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {stats.amadeusCount > 0 && (
+                    <span className="text-xs px-2 py-1 bg-green-100 text-green-700 rounded-full flex items-center gap-1">
+                      <Database className="w-3 h-3" />
+                      {stats.amadeusCount} Amadeus
+                    </span>
+                  )}
+                  {stats.googlePlacesCount > 0 && (
+                    <span className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded-full flex items-center gap-1">
+                      <MapPin className="w-3 h-3" />
+                      {stats.googlePlacesCount} Google Places
+                    </span>
+                  )}
+                  {stats.fromRealExperiences > 0 && (
+                    <span className="text-xs px-2 py-1 bg-emerald-100 text-emerald-700 rounded-full flex items-center gap-1">
+                      <Check className="w-3 h-3" />
+                      {stats.fromRealExperiences} verified bookable
+                    </span>
+                  )}
+                  {!stats.hasRealActivities && stats.amadeusCount === 0 && stats.googlePlacesCount === 0 && (
+                    <span className="text-xs px-2 py-1 bg-amber-100 text-amber-700 rounded-full flex items-center gap-1">
+                      <Search className="w-3 h-3" />
+                      Web search + AI knowledge
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
             <button
               onClick={() => {
                 setGeneratedCards([]);
                 setThinking(null);
+                setStats(null);
                 setStep("preview");
               }}
               className="flex items-center gap-2 text-[#6B5344] hover:text-[#2C1810]"
@@ -538,29 +645,121 @@ GENERATE: ${cardCount} unique experience cards tailored to this group`;
             </button>
           </div>
 
-          {/* AI Thinking Panel */}
-          {thinking && (
-            <div className="bg-gradient-to-r from-purple-50 to-blue-50 rounded-xl border border-purple-200 overflow-hidden">
+          {/* Debug Panel - Collapsible */}
+          {(thinking || fullPrompt) && (
+            <div className="bg-white rounded-xl border border-[#E5DDD5] overflow-hidden">
               <button
                 onClick={() => setShowThinking(!showThinking)}
-                className="w-full p-4 flex items-center justify-between text-left"
+                className="w-full px-4 py-3 flex items-center justify-between text-left hover:bg-[#FDF8F3] transition-colors"
               >
-                <div className="flex items-center gap-2">
-                  <Brain className="w-5 h-5 text-purple-600" />
-                  <span className="font-medium text-purple-900">AI Reasoning</span>
+                <div className="flex items-center gap-3">
+                  <span className="font-medium text-[#2C1810]">Generation Details</span>
                   {usage && (
-                    <span className="text-xs text-purple-600 bg-purple-100 px-2 py-0.5 rounded-full">
+                    <span className="text-xs text-[#6B5344] bg-[#FDF8F3] px-2 py-0.5 rounded-full">
                       {usage.totalTokens.toLocaleString()} tokens · ${usage.costUsd.toFixed(4)}
                     </span>
                   )}
                 </div>
-                <ChevronDown className={`w-5 h-5 text-purple-600 transition-transform ${showThinking ? "rotate-180" : ""}`} />
+                <ChevronDown className={`w-5 h-5 text-[#6B5344] transition-transform ${showThinking ? "rotate-180" : ""}`} />
               </button>
+
               {showThinking && (
-                <div className="px-4 pb-4">
-                  <pre className="whitespace-pre-wrap text-sm text-purple-900 bg-white/50 p-4 rounded-lg max-h-96 overflow-y-auto font-mono">
-                    {thinking}
-                  </pre>
+                <div className="border-t border-[#E5DDD5]">
+                  {/* Tabs */}
+                  <div className="flex border-b border-[#E5DDD5]">
+                    <button
+                      onClick={() => { setShowInputData(false); setShowResearchData(false); }}
+                      className={`flex-1 px-4 py-2 text-sm font-medium flex items-center justify-center gap-2 transition-colors ${
+                        !showInputData && !showResearchData
+                          ? "bg-[#2C1810] text-white"
+                          : "text-[#6B5344] hover:bg-[#FDF8F3]"
+                      }`}
+                    >
+                      <Brain className="w-4 h-4" />
+                      AI Reasoning
+                    </button>
+                    <button
+                      onClick={() => { setShowInputData(true); setShowResearchData(false); }}
+                      className={`flex-1 px-4 py-2 text-sm font-medium flex items-center justify-center gap-2 transition-colors ${
+                        showInputData && !showResearchData
+                          ? "bg-[#2C1810] text-white"
+                          : "text-[#6B5344] hover:bg-[#FDF8F3]"
+                      }`}
+                    >
+                      <FileText className="w-4 h-4" />
+                      Input Data
+                    </button>
+                    <button
+                      onClick={() => { setShowInputData(false); setShowResearchData(true); }}
+                      className={`flex-1 px-4 py-2 text-sm font-medium flex items-center justify-center gap-2 transition-colors ${
+                        showResearchData
+                          ? "bg-[#2C1810] text-white"
+                          : "text-[#6B5344] hover:bg-[#FDF8F3]"
+                      }`}
+                    >
+                      <Database className="w-4 h-4" />
+                      Research Data
+                      {researchData && (
+                        <span className="text-xs bg-white/20 px-2 py-0.5 rounded-full">
+                          {researchData.combined.length}
+                        </span>
+                      )}
+                    </button>
+                  </div>
+
+                  <div className="p-4 max-h-80 overflow-y-auto bg-[#1a1a1a]">
+                    {showResearchData ? (
+                      <div className="space-y-4">
+                        {researchData ? (
+                          <>
+                            {/* Amadeus Data */}
+                            {researchData.amadeus.length > 0 && (
+                              <div className="border border-blue-500/30 rounded-lg p-3">
+                                <div className="flex items-center gap-2 mb-2">
+                                  <Database className="w-4 h-4 text-blue-400" />
+                                  <span className="text-sm font-semibold text-blue-400">
+                                    Amadeus Tours ({researchData.amadeus.length})
+                                  </span>
+                                </div>
+                                <pre className="whitespace-pre-wrap text-xs text-gray-300 font-mono leading-relaxed">
+                                  {JSON.stringify(researchData.amadeus, null, 2)}
+                                </pre>
+                              </div>
+                            )}
+
+                            {/* Google Places Data */}
+                            {researchData.googlePlaces.length > 0 && (
+                              <div className="border border-green-500/30 rounded-lg p-3">
+                                <div className="flex items-center gap-2 mb-2">
+                                  <MapPin className="w-4 h-4 text-green-400" />
+                                  <span className="text-sm font-semibold text-green-400">
+                                    Google Places ({researchData.googlePlaces.length})
+                                  </span>
+                                </div>
+                                <pre className="whitespace-pre-wrap text-xs text-gray-300 font-mono leading-relaxed">
+                                  {JSON.stringify(researchData.googlePlaces, null, 2)}
+                                </pre>
+                              </div>
+                            )}
+
+                            {researchData.amadeus.length === 0 && researchData.googlePlaces.length === 0 && (
+                              <p className="text-gray-400 text-sm">No research data from external sources. Using AI knowledge only.</p>
+                            )}
+                          </>
+                        ) : (
+                          <p className="text-gray-400 text-sm">No research data available</p>
+                        )}
+                      </div>
+                    ) : showInputData ? (
+                      <pre className="whitespace-pre-wrap text-sm text-gray-300 font-mono leading-relaxed">
+                        {fullPrompt || "No input data available"}
+                      </pre>
+                    ) : (
+                      <pre className="whitespace-pre-wrap text-sm text-green-400 font-mono leading-relaxed">
+                        {thinking || "No reasoning data available"}
+                      </pre>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
@@ -576,34 +775,55 @@ GENERATE: ${cardCount} unique experience cards tailored to this group`;
             {generatedCards.map((card, index) => (
               <div
                 key={index}
-                className="bg-white rounded-xl p-6 shadow-sm border border-[#E5DDD5] relative group"
+                className="bg-white rounded-xl shadow-sm border border-[#E5DDD5] relative group overflow-hidden"
               >
                 <button
                   onClick={() => handleRemoveCard(index)}
-                  className="absolute top-4 right-4 p-1 text-[#6B5344] hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                  className="absolute top-4 right-4 z-10 p-1.5 bg-white/90 rounded-full text-[#6B5344] hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
                 >
-                  <X className="w-5 h-5" />
+                  <X className="w-4 h-4" />
                 </button>
 
-                <div className="flex items-start gap-4">
-                  <div
-                    className="w-12 h-12 rounded-lg flex items-center justify-center text-2xl"
-                    style={{ backgroundColor: `${RARITY_CONFIG[card.rarity].bgColor}` }}
-                  >
-                    {CATEGORY_CONFIG[card.category]?.icon || "?"}
-                  </div>
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-1">
+                <div className="flex">
+                  {/* Picture */}
+                  {card.pictureUrl ? (
+                    <div className="w-32 h-32 flex-shrink-0 bg-gray-100">
+                      <img
+                        src={card.pictureUrl}
+                        alt={card.name}
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).style.display = "none";
+                        }}
+                      />
+                    </div>
+                  ) : (
+                    <div
+                      className="w-32 h-32 flex-shrink-0 flex items-center justify-center text-4xl"
+                      style={{ backgroundColor: `${getRarityConfig(card.rarity).bgColor}` }}
+                    >
+                      {CATEGORY_CONFIG[card.category]?.icon || "?"}
+                    </div>
+                  )}
+
+                  <div className="flex-1 p-4">
+                    <div className="flex items-center gap-2 mb-1 flex-wrap">
                       <h3 className="font-medium text-[#2C1810]">{card.name}</h3>
                       <span
                         className="px-2 py-0.5 text-xs rounded-full"
                         style={{
-                          backgroundColor: RARITY_CONFIG[card.rarity].bgColor,
-                          color: RARITY_CONFIG[card.rarity].color,
+                          backgroundColor: getRarityConfig(card.rarity).bgColor,
+                          color: getRarityConfig(card.rarity).color,
                         }}
                       >
-                        {RARITY_CONFIG[card.rarity].label}
+                        {getRarityConfig(card.rarity).label}
                       </span>
+                      {card.amadeusActivityId && (
+                        <span className="px-2 py-0.5 text-xs rounded-full bg-green-100 text-green-700 flex items-center gap-1">
+                          <Check className="w-3 h-3" />
+                          Verified
+                        </span>
+                      )}
                     </div>
                     <p className="text-[#6B5344] text-sm mb-3">{card.description}</p>
                     <div className="flex flex-wrap gap-3 text-xs text-[#6B5344] mb-2">
@@ -687,7 +907,7 @@ GENERATE: ${cardCount} unique experience cards tailored to this group`;
                 ) : (
                   <Check className="w-5 h-5" />
                 )}
-                Save {generatedCards.length} Cards as Drafts
+                Save {generatedCards.length} Cards
               </button>
             </div>
           )}
