@@ -37,7 +37,34 @@ export async function verifyJourneyAccess(
     .eq("unique_slug", slug)
     .single();
 
-  if (error || !data) {
+  // Differentiate between database errors and not found
+  if (error) {
+    console.error("[JOURNEY-AUTH] Database error fetching journey:", {
+      slug,
+      error: error.message,
+      code: error.code,
+    });
+
+    // PGRST116 is "no rows returned" - treat as 404
+    if (error.code === "PGRST116") {
+      return {
+        success: false,
+        response: NextResponse.json({ error: "Journey not found" }, { status: 404 }),
+      };
+    }
+
+    // Other database errors are 500
+    return {
+      success: false,
+      response: NextResponse.json(
+        { error: "Failed to fetch journey", details: error.message },
+        { status: 500 }
+      ),
+    };
+  }
+
+  if (!data) {
+    console.warn("[JOURNEY-AUTH] Journey not found:", slug);
     return {
       success: false,
       response: NextResponse.json({ error: "Journey not found" }, { status: 404 }),
@@ -53,9 +80,24 @@ export async function verifyJourneyAccess(
   }
 
   // If not published, only curator can access (preview mode)
-  const { data: { user } } = await supabase.auth.getUser();
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+  if (authError) {
+    console.error("[JOURNEY-AUTH] Auth check failed:", authError.message);
+    // Return 404 for security (don't reveal journey exists)
+    return {
+      success: false,
+      response: NextResponse.json({ error: "Journey not found" }, { status: 404 }),
+    };
+  }
 
   if (!user || journey.curator_id !== user.id) {
+    console.warn("[JOURNEY-AUTH] Unauthorized access attempt:", {
+      slug,
+      userId: user?.id,
+      curatorId: journey.curator_id,
+    });
+    // Return 404 for security (don't reveal journey exists)
     return {
       success: false,
       response: NextResponse.json({ error: "Journey not found" }, { status: 404 }),

@@ -4,6 +4,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { buildTreatPrompt, parseTreatsResponse, inferGenderFromName } from "@/lib/ai/generate-treats";
 import type { TreatGenerationContext } from "@/lib/ai/generate-treats";
 import { treatsLogger } from "@/lib/logger";
+import { AI_CONFIG } from "@/lib/ai/config";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -96,7 +97,7 @@ export async function POST(
           try {
             // Call Claude with extended thinking and streaming
             const response = await anthropic.messages.create({
-              model: "claude-sonnet-4-20250514",
+              model: AI_CONFIG.MODEL,
               max_tokens: 16000,
               thinking: {
                 type: "enabled",
@@ -177,7 +178,7 @@ export async function POST(
 
     // Non-streaming response (fallback)
     const response = await anthropic.messages.create({
-      model: "claude-sonnet-4-20250514",
+      model: AI_CONFIG.MODEL,
       max_tokens: 4096,
       messages: [{ role: "user", content: prompt }],
     });

@@ -25,6 +25,7 @@ import {
   Database,
   Search,
   FileText,
+  Terminal,
 } from "lucide-react";
 import { CATEGORY_CONFIG, RARITY_CONFIG, PROFILE_CONFIG, getRarityConfig } from "@/types/database";
 import type { CardCategory, TargetProfile, Rarity } from "@/types/database";
@@ -118,11 +119,17 @@ export default function GenerateCardsPage() {
     combined: unknown[];
   } | null>(null);
   const [thinking, setThinking] = useState<string | null>(null);
+  const [streamingOutput, setStreamingOutput] = useState<string>("");
   const [showThinking, setShowThinking] = useState(false);
   const [showInputData, setShowInputData] = useState(false);
   const [showResearchData, setShowResearchData] = useState(false);
+  const [showConsoleLogs, setShowConsoleLogs] = useState(false);
+  const [showOutput, setShowOutput] = useState(false);
+  const [consoleLogs, setConsoleLogs] = useState<{ timestamp: string; level: string; source: string; message: string }[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [generationStartTime, setGenerationStartTime] = useState<number | null>(null);
+  const [elapsedTime, setElapsedTime] = useState(0);
   const hasFetched = useRef(false);
 
   // Load journey data
@@ -154,6 +161,26 @@ export default function GenerateCardsPage() {
     loadJourney();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [journeyId]);
+
+  // Elapsed time timer during generation
+  useEffect(() => {
+    if (step !== "generating" || !generationStartTime) {
+      return;
+    }
+
+    const interval = setInterval(() => {
+      setElapsedTime(Math.floor((Date.now() - generationStartTime) / 1000));
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [step, generationStartTime]);
+
+  // Format elapsed time as mm:ss
+  const formatElapsedTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, "0")}`;
+  };
 
   // Generate prompt preview
   const generatePromptPreview = (dest: Destination) => {
@@ -190,6 +217,7 @@ GENERATE: ${cardCount} unique experience cards tailored to this group`;
     setSelectedDestination(dest);
     setPrompt(generatePromptPreview(dest));
     setStep("preview");
+    setError(null); // Clear any previous errors
   };
 
   // Handle generation with SSE streaming
@@ -199,7 +227,11 @@ GENERATE: ${cardCount} unique experience cards tailored to this group`;
     setStep("generating");
     setError(null);
     setThinking("");
+    setStreamingOutput("");
+    setConsoleLogs([]); // Reset logs
     setShowThinking(true); // Show thinking panel during generation
+    setGenerationStartTime(Date.now());
+    setElapsedTime(0);
 
     try {
       const res = await fetch("/api/admin/generate", {
@@ -223,10 +255,35 @@ GENERATE: ${cardCount} unique experience cards tailored to this group`;
 
       const decoder = new TextDecoder();
       let buffer = "";
+      let receivedComplete = false;
 
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
+        if (done) {
+          // Process any remaining buffer content
+          if (buffer.trim()) {
+            const remainingLines = buffer.split("\n\n");
+            for (const line of remainingLines) {
+              if (line.startsWith("data: ")) {
+                try {
+                  const data = JSON.parse(line.slice(6));
+                  if (data.type === "complete") {
+                    setGeneratedCards(data.cards);
+                    setUsage(data.usage);
+                    setStats(data.stats);
+                    setStep("review");
+                    receivedComplete = true;
+                  } else if (data.type === "error") {
+                    throw new Error(data.error);
+                  }
+                } catch {
+                  // Skip malformed events
+                }
+              }
+            }
+          }
+          break;
+        }
 
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split("\n\n");
@@ -244,15 +301,24 @@ GENERATE: ${cardCount} unique experience cards tailored to this group`;
                 setGooglePlacesCount(data.googlePlacesCount || 0);
                 setFullPrompt(data.prompt || null);
                 setResearchData(data.researchData || null);
+              } else if (data.type === "heartbeat") {
+                // Heartbeat to keep connection alive - no action needed
+              } else if (data.type === "log") {
+                // Add streaming log entry
+                setConsoleLogs(prev => [...prev, data.log]);
               } else if (data.type === "thinking") {
                 // Update thinking in real-time
                 setThinking(prev => (prev || "") + data.content);
+              } else if (data.type === "text") {
+                // Update streaming output in real-time
+                setStreamingOutput(prev => prev + data.content);
               } else if (data.type === "complete") {
                 // Generation complete
                 setGeneratedCards(data.cards);
                 setUsage(data.usage);
                 setStats(data.stats);
                 setStep("review");
+                receivedComplete = true;
               } else if (data.type === "error") {
                 throw new Error(data.error);
               }
@@ -261,6 +327,11 @@ GENERATE: ${cardCount} unique experience cards tailored to this group`;
             }
           }
         }
+      }
+
+      // If stream ended without a complete event, show error
+      if (!receivedComplete) {
+        throw new Error("Stream ended unexpectedly without completion. The AI may have timed out or encountered an error. Please try again.");
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Generation failed");
@@ -433,7 +504,7 @@ GENERATE: ${cardCount} unique experience cards tailored to this group`;
       {step === "preview" && selectedDestination && (
         <div className="space-y-6">
           <div className="flex items-center gap-2 text-sm text-[#6B5344]">
-            <button onClick={() => setStep("select")} className="hover:text-[#2C1810]">
+            <button onClick={() => { setStep("select"); setError(null); }} className="hover:text-[#2C1810]">
               Destinations
             </button>
             <ChevronRight className="w-4 h-4" />
@@ -500,7 +571,7 @@ GENERATE: ${cardCount} unique experience cards tailored to this group`;
 
             <div className="p-4 border-t border-[#E5DDD5] flex items-center justify-between">
               <button
-                onClick={() => setStep("select")}
+                onClick={() => { setStep("select"); setError(null); }}
                 className="px-4 py-2 text-[#6B5344] hover:text-[#2C1810]"
               >
                 Back
@@ -526,7 +597,13 @@ GENERATE: ${cardCount} unique experience cards tailored to this group`;
               <Loader2 className="w-6 h-6 text-white animate-spin" />
             </div>
             <div className="flex-1">
-              <h2 className="font-serif text-xl text-[#2C1810]">Generating for {selectedDestination?.name}</h2>
+              <div className="flex items-center justify-between">
+                <h2 className="font-serif text-xl text-[#2C1810]">Generating for {selectedDestination?.name}</h2>
+                <div className="flex items-center gap-2 text-sm text-[#6B5344] font-mono">
+                  <Clock className="w-4 h-4" />
+                  <span>{formatElapsedTime(elapsedTime)}</span>
+                </div>
+              </div>
               <div className="flex items-center gap-2 mt-1 flex-wrap">
                 {amadeusCount > 0 && (
                   <span className="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded-full flex items-center gap-1">
@@ -550,36 +627,94 @@ GENERATE: ${cardCount} unique experience cards tailored to this group`;
             </div>
           </div>
 
-          {/* Tabs for Input Data vs Thinking */}
+          {/* Tabs for AI Thinking, Input Data, Console */}
           <div className="bg-white rounded-xl border border-[#E5DDD5] overflow-hidden">
             <div className="flex border-b border-[#E5DDD5]">
               <button
-                onClick={() => setShowInputData(false)}
+                onClick={() => { setShowInputData(false); setShowConsoleLogs(false); setShowOutput(false); }}
                 className={`flex-1 px-4 py-3 text-sm font-medium flex items-center justify-center gap-2 transition-colors ${
-                  !showInputData
+                  !showInputData && !showConsoleLogs && !showOutput
                     ? "bg-[#2C1810] text-white"
                     : "text-[#6B5344] hover:bg-[#FDF8F3]"
                 }`}
               >
                 <Brain className="w-4 h-4" />
-                AI Thinking
-                <Loader2 className="w-3 h-3 animate-spin" />
+                Thinking
               </button>
               <button
-                onClick={() => setShowInputData(true)}
+                onClick={() => { setShowInputData(false); setShowConsoleLogs(false); setShowOutput(true); }}
+                className={`flex-1 px-4 py-3 text-sm font-medium flex items-center justify-center gap-2 transition-colors ${
+                  showOutput
+                    ? "bg-[#2C1810] text-white"
+                    : "text-[#6B5344] hover:bg-[#FDF8F3]"
+                }`}
+              >
+                <FileText className="w-4 h-4" />
+                Output
+                {streamingOutput && (
+                  <span className="text-xs bg-white/20 px-1.5 py-0.5 rounded-full">{Math.round(streamingOutput.length / 1000)}k</span>
+                )}
+              </button>
+              <button
+                onClick={() => { setShowInputData(false); setShowConsoleLogs(true); setShowOutput(false); }}
+                className={`flex-1 px-4 py-3 text-sm font-medium flex items-center justify-center gap-2 transition-colors ${
+                  showConsoleLogs
+                    ? "bg-[#2C1810] text-white"
+                    : "text-[#6B5344] hover:bg-[#FDF8F3]"
+                }`}
+              >
+                <Terminal className="w-4 h-4" />
+                Console
+                {consoleLogs.length > 0 && (
+                  <span className="text-xs bg-white/20 px-1.5 py-0.5 rounded-full">{consoleLogs.length}</span>
+                )}
+              </button>
+              <button
+                onClick={() => { setShowInputData(true); setShowConsoleLogs(false); setShowOutput(false); }}
                 className={`flex-1 px-4 py-3 text-sm font-medium flex items-center justify-center gap-2 transition-colors ${
                   showInputData
                     ? "bg-[#2C1810] text-white"
                     : "text-[#6B5344] hover:bg-[#FDF8F3]"
                 }`}
               >
-                <FileText className="w-4 h-4" />
-                Input Data
+                <Database className="w-4 h-4" />
+                Input
               </button>
             </div>
 
             <div className="p-4 max-h-[500px] overflow-y-auto bg-[#1a1a1a]">
-              {showInputData ? (
+              {showOutput ? (
+                <pre className="whitespace-pre-wrap text-sm text-blue-400 font-mono leading-relaxed">
+                  {streamingOutput || "Waiting for AI to generate output..."}
+                </pre>
+              ) : showConsoleLogs ? (
+                <div className="font-mono text-xs space-y-1">
+                  {consoleLogs.length === 0 ? (
+                    <span className="text-gray-500">Waiting for logs...</span>
+                  ) : (
+                    consoleLogs.map((log, i) => (
+                      <div key={i} className="flex gap-2">
+                        <span className="text-gray-500">{log.timestamp}</span>
+                        <span className={`w-16 ${
+                          log.level === "error" ? "text-red-400" :
+                          log.level === "warn" ? "text-yellow-400" :
+                          log.level === "debug" ? "text-gray-400" :
+                          "text-blue-400"
+                        }`}>
+                          [{log.source}]
+                        </span>
+                        <span className={
+                          log.level === "error" ? "text-red-300" :
+                          log.level === "warn" ? "text-yellow-300" :
+                          "text-gray-300"
+                        }>
+                          {log.message}
+                        </span>
+                      </div>
+                    ))
+                  )}
+                </div>
+              ) : showInputData ? (
                 <pre className="whitespace-pre-wrap text-sm text-gray-300 font-mono leading-relaxed">
                   {fullPrompt || "Loading prompt..."}
                 </pre>
@@ -668,9 +803,9 @@ GENERATE: ${cardCount} unique experience cards tailored to this group`;
                   {/* Tabs */}
                   <div className="flex border-b border-[#E5DDD5]">
                     <button
-                      onClick={() => { setShowInputData(false); setShowResearchData(false); }}
+                      onClick={() => { setShowInputData(false); setShowResearchData(false); setShowConsoleLogs(false); }}
                       className={`flex-1 px-4 py-2 text-sm font-medium flex items-center justify-center gap-2 transition-colors ${
-                        !showInputData && !showResearchData
+                        !showInputData && !showResearchData && !showConsoleLogs
                           ? "bg-[#2C1810] text-white"
                           : "text-[#6B5344] hover:bg-[#FDF8F3]"
                       }`}
@@ -679,9 +814,23 @@ GENERATE: ${cardCount} unique experience cards tailored to this group`;
                       AI Reasoning
                     </button>
                     <button
-                      onClick={() => { setShowInputData(true); setShowResearchData(false); }}
+                      onClick={() => { setShowInputData(false); setShowResearchData(false); setShowConsoleLogs(true); }}
                       className={`flex-1 px-4 py-2 text-sm font-medium flex items-center justify-center gap-2 transition-colors ${
-                        showInputData && !showResearchData
+                        showConsoleLogs
+                          ? "bg-[#2C1810] text-white"
+                          : "text-[#6B5344] hover:bg-[#FDF8F3]"
+                      }`}
+                    >
+                      <Terminal className="w-4 h-4" />
+                      Console
+                      {consoleLogs.length > 0 && (
+                        <span className="text-xs bg-white/20 px-1.5 py-0.5 rounded-full">{consoleLogs.length}</span>
+                      )}
+                    </button>
+                    <button
+                      onClick={() => { setShowInputData(true); setShowResearchData(false); setShowConsoleLogs(false); }}
+                      className={`flex-1 px-4 py-2 text-sm font-medium flex items-center justify-center gap-2 transition-colors ${
+                        showInputData
                           ? "bg-[#2C1810] text-white"
                           : "text-[#6B5344] hover:bg-[#FDF8F3]"
                       }`}
@@ -690,7 +839,7 @@ GENERATE: ${cardCount} unique experience cards tailored to this group`;
                       Input Data
                     </button>
                     <button
-                      onClick={() => { setShowInputData(false); setShowResearchData(true); }}
+                      onClick={() => { setShowInputData(false); setShowResearchData(true); setShowConsoleLogs(false); }}
                       className={`flex-1 px-4 py-2 text-sm font-medium flex items-center justify-center gap-2 transition-colors ${
                         showResearchData
                           ? "bg-[#2C1810] text-white"
@@ -698,7 +847,7 @@ GENERATE: ${cardCount} unique experience cards tailored to this group`;
                       }`}
                     >
                       <Database className="w-4 h-4" />
-                      Research Data
+                      Research
                       {researchData && (
                         <span className="text-xs bg-white/20 px-2 py-0.5 rounded-full">
                           {researchData.combined.length}
@@ -748,6 +897,33 @@ GENERATE: ${cardCount} unique experience cards tailored to this group`;
                           </>
                         ) : (
                           <p className="text-gray-400 text-sm">No research data available</p>
+                        )}
+                      </div>
+                    ) : showConsoleLogs ? (
+                      <div className="font-mono text-xs space-y-1">
+                        {consoleLogs.length === 0 ? (
+                          <span className="text-gray-500">No logs recorded</span>
+                        ) : (
+                          consoleLogs.map((log, i) => (
+                            <div key={i} className="flex gap-2">
+                              <span className="text-gray-500">{log.timestamp}</span>
+                              <span className={`w-16 ${
+                                log.level === "error" ? "text-red-400" :
+                                log.level === "warn" ? "text-yellow-400" :
+                                log.level === "debug" ? "text-gray-400" :
+                                "text-blue-400"
+                              }`}>
+                                [{log.source}]
+                              </span>
+                              <span className={
+                                log.level === "error" ? "text-red-300" :
+                                log.level === "warn" ? "text-yellow-300" :
+                                "text-gray-300"
+                              }>
+                                {log.message}
+                              </span>
+                            </div>
+                          ))
                         )}
                       </div>
                     ) : showInputData ? (
@@ -892,6 +1068,7 @@ GENERATE: ${cardCount} unique experience cards tailored to this group`;
                 onClick={() => {
                   setGeneratedCards([]);
                   setStep("select");
+                  setError(null);
                 }}
                 className="px-4 py-2 text-[#6B5344] hover:text-[#2C1810]"
               >

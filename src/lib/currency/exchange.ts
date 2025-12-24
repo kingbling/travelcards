@@ -1,10 +1,10 @@
 // Currency exchange rate utilities
 
 interface ExchangeRateResponse {
-  result: string;
-  base_code: string;
-  conversion_rates: Record<string, number>;
-  time_last_update_unix: number;
+  base: string;
+  date: string;
+  time_last_updated: number;
+  rates: Record<string, number>;
 }
 
 interface CurrencyInfo {
@@ -123,17 +123,17 @@ export async function getExchangeRates(): Promise<Record<string, number>> {
 
     const data = await response.json() as ExchangeRateResponse;
 
-    // Ensure conversion_rates exists and is valid
-    if (!data.conversion_rates || typeof data.conversion_rates !== 'object') {
+    // Ensure rates exists and is valid
+    if (!data.rates || typeof data.rates !== 'object') {
       throw new Error('Invalid exchange rate response structure');
     }
 
     cachedRates = {
-      rates: data.conversion_rates,
+      rates: data.rates,
       timestamp: Date.now(),
     };
 
-    return data.conversion_rates;
+    return data.rates;
   } catch (error) {
     console.error("Failed to fetch exchange rates:", error);
 

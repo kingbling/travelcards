@@ -28,7 +28,12 @@ import { amadeusLogger, googleLogger, aiLogger, apiLogger } from "@/lib/logger";
 // Force dynamic to prevent caching for SSE
 export const dynamic = "force-dynamic";
 
-const anthropic = new Anthropic();
+const anthropic = new Anthropic({
+  // Disable prompt caching to avoid cached errors
+  defaultHeaders: {
+    "anthropic-beta": "interleaved-thinking-2025-05-14",
+  },
+});
 
 export async function POST(request: Request) {
   const encoder = new TextEncoder();
@@ -145,137 +150,161 @@ export async function POST(request: Request) {
       categoryStats[cat] = (categoryStats[cat] || 0) + 1;
     }
 
-    // Fetch real activities from Amadeus and Google Places
-    const allExperiences: UnifiedExperience[] = [];
-    const amadeusExperiences: UnifiedExperience[] = [];
-    const googlePlacesExperiences: UnifiedExperience[] = [];
-    let amadeusCount = 0;
-    let googlePlacesCount = 0;
-
-    const coords = await getDestinationCoordinates(
-      targetDestination.name,
-      targetDestination.country
-    );
-
-    if (coords) {
-      // Try Amadeus first
-      try {
-        const activities = await searchActivities(
-          {
-            latitude: coords.latitude,
-            longitude: coords.longitude,
-            radius: 20, // 20km radius
-          },
-          100 // Fetch up to 100 activities with pagination
-        );
-
-        if (activities.length > 0) {
-          const unifiedAmadeus = convertAmadeusToUnified(activities);
-          amadeusExperiences.push(...unifiedAmadeus);
-          allExperiences.push(...unifiedAmadeus);
-          amadeusCount = unifiedAmadeus.length;
-          amadeusLogger.info(`Found ${amadeusCount} activities for ${targetDestination.name}`);
-          amadeusLogger.debug("Raw data:", JSON.stringify(unifiedAmadeus, null, 2));
-        }
-      } catch (error) {
-        amadeusLogger.warn("Failed to fetch activities:", error);
-      }
-
-      // Also fetch Google Places for restaurants, attractions, etc.
-      if (isGooglePlacesConfigured()) {
-        googleLogger.info(`Starting Google Places search for ${targetDestination.name}`);
-        try {
-          const searchQueries = [
-            `best restaurants ${targetDestination.name}`,
-            `things to do ${targetDestination.name}`,
-            `attractions ${targetDestination.name}`,
-            `museums ${targetDestination.name}`,
-            `art galleries ${targetDestination.name}`,
-            `family activities ${targetDestination.name}`,
-            `cafes ${targetDestination.name}`,
-            `parks ${targetDestination.name}`,
-            `beaches ${targetDestination.name}`,
-            `shopping ${targetDestination.name}`,
-          ];
-
-          const allPlaces = [];
-          for (const query of searchQueries) {
-            try {
-              const places = await textSearchPlaces(query, coords.latitude, coords.longitude);
-              googleLogger.debug(`Query "${query}" returned ${places.length} results`);
-              allPlaces.push(...places);
-            } catch (queryError) {
-              googleLogger.error(`Query "${query}" failed:`, queryError);
-            }
-          }
-
-          googleLogger.debug(`Total raw results before deduplication: ${allPlaces.length}`);
-
-          // Dedupe by placeId and limit to 100
-          const uniquePlaces = Array.from(
-            new Map(allPlaces.map(p => [p.placeId, p])).values()
-          );
-          const limitedPlaces = uniquePlaces.slice(0, 100);
-
-          googleLogger.debug(`After deduplication: ${uniquePlaces.length} unique places`);
-          googleLogger.debug(`After limiting to 100: ${limitedPlaces.length} places`);
-
-          if (limitedPlaces.length > 0) {
-            const unifiedPlaces = await convertPlacesToUnified(limitedPlaces, targetDestination.country);
-            googlePlacesExperiences.push(...unifiedPlaces);
-            allExperiences.push(...unifiedPlaces);
-            googlePlacesCount = unifiedPlaces.length;
-            googleLogger.info(`Found ${googlePlacesCount} unique places for ${targetDestination.name}`);
-            googleLogger.debug("Raw data:", JSON.stringify(unifiedPlaces, null, 2));
-          } else {
-            googleLogger.warn("No places found after processing!");
-          }
-        } catch (error) {
-          googleLogger.error("Failed to fetch places:", error);
-        }
-      } else {
-        googleLogger.warn("Google Places API not configured - skipping");
-      }
-    } else {
-      aiLogger.info(`No coordinates found for ${targetDestination.name} - using AI knowledge only`);
-    }
-
-    // Strip experiences to essential fields for AI (reduces token usage)
-    const slimExperiences = allExperiences.map(exp => ({
-      source: exp.source,
-      id: exp.id,
-      name: exp.name,
-      price: exp.price.display,
-      categories: exp.categories,
-      bookingUrl: exp.bookingUrl,
-      pictureUrl: exp.pictureUrl,
-      address: exp.location.address,
-    }));
-
-    // Format as slim JSON for AI prompt
-    const combinedExternalData = slimExperiences.length > 0
-      ? JSON.stringify(slimExperiences, null, 2)
-      : undefined;
-
-    // Build generation context
-    const context: GenerationContext = {
-      journeyName: journey.name,
-      recipientName: journey.recipient_name,
-      travelers,
-      destination: targetDestination,
-      existingCards: existingCardNames,
-      categoryStats,
-      realActivities: combinedExternalData || undefined,
-    };
-
-    // Build the prompt (request extra to account for deduplication)
-    const prompt = buildPrompt(context, requestedCount);
-
-    // Create SSE stream with real-time thinking
+    // Create SSE stream immediately so we can stream logs in real-time
     const readable = new ReadableStream({
       async start(controller) {
+        // Helper to stream logs (both to client and server console)
+        const streamLog = (level: string, source: string, message: string) => {
+          const logEntry = {
+            timestamp: new Date().toISOString().split('T')[1].slice(0, 12),
+            level,
+            source,
+            message,
+          };
+          // Send to client
+          controller.enqueue(encoder.encode(
+            `data: ${JSON.stringify({ type: "log", log: logEntry })}\n\n`
+          ));
+          // Also log to server console
+          const fullMessage = `[${logEntry.timestamp}] ${level.toUpperCase().padEnd(5)} [${source}] ${message}`;
+          if (level === "error") console.error(fullMessage);
+          else if (level === "warn") console.warn(fullMessage);
+          else console.log(fullMessage);
+        };
+
+        // Send heartbeat every 30 seconds to keep connection alive
+        let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
+
         try {
-          // Send initial event with prompt and research data
+          // Fetch real activities from Amadeus and Google Places
+          const allExperiences: UnifiedExperience[] = [];
+          const amadeusExperiences: UnifiedExperience[] = [];
+          const googlePlacesExperiences: UnifiedExperience[] = [];
+          let amadeusCount = 0;
+          let googlePlacesCount = 0;
+
+          streamLog("info", "GEOCODE", `Looking up coordinates for ${targetDestination.name}`);
+          const coords = await getDestinationCoordinates(
+            targetDestination.name,
+            targetDestination.country
+          );
+
+          if (coords) {
+            streamLog("info", "GEOCODE", `Found: ${coords.latitude}, ${coords.longitude}`);
+
+            // Try Amadeus first
+            streamLog("info", "AMADEUS", `Searching activities within 20km radius...`);
+            try {
+              const activities = await searchActivities(
+                {
+                  latitude: coords.latitude,
+                  longitude: coords.longitude,
+                  radius: 20,
+                },
+                100
+              );
+
+              if (activities.length > 0) {
+                const unifiedAmadeus = convertAmadeusToUnified(activities);
+                amadeusExperiences.push(...unifiedAmadeus);
+                allExperiences.push(...unifiedAmadeus);
+                amadeusCount = unifiedAmadeus.length;
+                streamLog("info", "AMADEUS", `Found ${amadeusCount} bookable tours/activities`);
+              } else {
+                streamLog("warn", "AMADEUS", "No activities found in this area");
+              }
+            } catch (error) {
+              streamLog("error", "AMADEUS", `Failed: ${error instanceof Error ? error.message : "Unknown error"}`);
+            }
+
+            // Also fetch Google Places
+            if (isGooglePlacesConfigured()) {
+              streamLog("info", "GOOGLE", `Starting Google Places search...`);
+              try {
+                const searchQueries = [
+                  `best restaurants ${targetDestination.name}`,
+                  `things to do ${targetDestination.name}`,
+                  `attractions ${targetDestination.name}`,
+                  `museums ${targetDestination.name}`,
+                  `art galleries ${targetDestination.name}`,
+                  `family activities ${targetDestination.name}`,
+                  `cafes ${targetDestination.name}`,
+                  `parks ${targetDestination.name}`,
+                  `beaches ${targetDestination.name}`,
+                  `shopping ${targetDestination.name}`,
+                ];
+
+                const allPlaces = [];
+                for (const query of searchQueries) {
+                  try {
+                    const places = await textSearchPlaces(query, coords.latitude, coords.longitude);
+                    streamLog("debug", "GOOGLE", `"${query.replace(targetDestination.name, '...')}" → ${places.length} results`);
+                    allPlaces.push(...places);
+                  } catch (queryError) {
+                    streamLog("error", "GOOGLE", `Query failed: ${query}`);
+                  }
+                }
+
+                // Dedupe by placeId and limit to 100
+                const uniquePlaces = Array.from(
+                  new Map(allPlaces.map(p => [p.placeId, p])).values()
+                );
+                const limitedPlaces = uniquePlaces.slice(0, 100);
+                streamLog("info", "GOOGLE", `${allPlaces.length} raw → ${uniquePlaces.length} unique → ${limitedPlaces.length} limited`);
+
+                if (limitedPlaces.length > 0) {
+                  const unifiedPlaces = await convertPlacesToUnified(limitedPlaces, targetDestination.country);
+                  googlePlacesExperiences.push(...unifiedPlaces);
+                  allExperiences.push(...unifiedPlaces);
+                  googlePlacesCount = unifiedPlaces.length;
+                  streamLog("info", "GOOGLE", `Found ${googlePlacesCount} places (restaurants, attractions, etc.)`);
+                } else {
+                  streamLog("warn", "GOOGLE", "No places found after processing");
+                }
+              } catch (error) {
+                streamLog("error", "GOOGLE", `Failed: ${error instanceof Error ? error.message : "Unknown error"}`);
+              }
+            } else {
+              streamLog("warn", "GOOGLE", "API not configured - skipping");
+            }
+          } else {
+            streamLog("warn", "GEOCODE", `No coordinates found for ${targetDestination.name} - using AI knowledge only`);
+          }
+
+          // Strip experiences to essential fields for AI (reduces token usage)
+          const slimExperiences = allExperiences.map(exp => ({
+            source: exp.source,
+            id: exp.id,
+            name: exp.name,
+            price: exp.price.display,
+            categories: exp.categories,
+            bookingUrl: exp.bookingUrl,
+            pictureUrl: exp.pictureUrl,
+            address: exp.location.address,
+          }));
+
+          // Format as slim JSON for AI prompt
+          const combinedExternalData = slimExperiences.length > 0
+            ? JSON.stringify(slimExperiences, null, 2)
+            : undefined;
+
+          // Build generation context
+          const context: GenerationContext = {
+            journeyName: journey.name,
+            recipientName: journey.recipient_name,
+            travelers,
+            destination: targetDestination,
+            existingCards: existingCardNames,
+            categoryStats,
+            realActivities: combinedExternalData || undefined,
+          };
+
+          // Build the prompt (request extra to account for deduplication)
+          streamLog("info", "AI", `Building prompt for ${requestedCount} cards (target: ${cardCount})`);
+          const prompt = buildPrompt(context, requestedCount);
+          streamLog("info", "AI", `Prompt ready: ${prompt.length} chars, ${allExperiences.length} experiences`);
+
+          // Send init event with research data
           controller.enqueue(encoder.encode(
             `data: ${JSON.stringify({
               type: "init",
@@ -292,6 +321,20 @@ export async function POST(request: Request) {
             })}\n\n`
           ));
 
+          streamLog("info", "AI", `Calling Claude ${AI_CONFIG.MODEL}...`);
+
+          heartbeatInterval = setInterval(() => {
+            try {
+              controller.enqueue(encoder.encode(
+                `data: ${JSON.stringify({ type: "heartbeat", timestamp: Date.now() })}\n\n`
+              ));
+            } catch {
+              // Controller closed, stop heartbeat
+              if (heartbeatInterval) clearInterval(heartbeatInterval);
+            }
+          }, 30000);
+
+          try {
           // Stream from Anthropic with extended thinking and web search (for seasonal events only)
           const stream = anthropic.messages.stream({
             model: AI_CONFIG.MODEL,
@@ -304,7 +347,7 @@ export async function POST(request: Request) {
               {
                 type: "web_search_20250305",
                 name: "web_search",
-                max_uses: 2,
+                max_uses: 5,
               },
             ],
             system: SYSTEM_PROMPT,
@@ -315,10 +358,47 @@ export async function POST(request: Request) {
 
           let thinkingText = "";
           let responseText = "";
+          let webSearchCount = 0;
+          let eventCount = 0;
+          let lastEventTime = Date.now();
+          let lastProgressUpdate = Date.now();
+          let currentPhase = "starting";
 
           // Stream events as they come
+          console.log("[STREAM] Starting to iterate over AI events...");
           for await (const event of stream) {
-            if (event.type === "content_block_delta") {
+            eventCount++;
+            const now = Date.now();
+            const timeSinceLast = now - lastEventTime;
+            lastEventTime = now;
+
+            // Log event types for debugging (every 50 events or if gap > 5s)
+            if (eventCount % 50 === 0 || timeSinceLast > 5000) {
+              console.log(`[STREAM] Event #${eventCount}: ${event.type} (${timeSinceLast}ms since last)`);
+            }
+
+            if (event.type === "content_block_start") {
+              const block = event.content_block as { type: string; name?: string };
+              console.log(`[STREAM] Content block start: ${block.type}${block.name ? ` (${block.name})` : ""}`);
+              if (block.type === "server_tool_use" && block.name === "web_search") {
+                webSearchCount++;
+                currentPhase = "web_search";
+                streamLog("info", "AI", `Web search #${webSearchCount} started...`);
+              } else if (block.type === "web_search_tool_result") {
+                streamLog("info", "AI", `Web search #${webSearchCount} completed`);
+              } else if (block.type === "thinking") {
+                currentPhase = "thinking";
+                streamLog("info", "AI", "Thinking...");
+              } else if (block.type === "text") {
+                currentPhase = "generating";
+                streamLog("info", "AI", "Generating cards...");
+              }
+            } else if (event.type === "content_block_stop") {
+              console.log(`[STREAM] Content block stop`);
+              if (currentPhase === "thinking") {
+                streamLog("info", "AI", "Thinking complete");
+              }
+            } else if (event.type === "content_block_delta") {
               const delta = event.delta as { type: string; thinking?: string; text?: string };
 
               if (delta.type === "thinking_delta" && delta.thinking) {
@@ -331,15 +411,32 @@ export async function POST(request: Request) {
                 controller.enqueue(encoder.encode(
                   `data: ${JSON.stringify({ type: "text", content: delta.text })}\n\n`
                 ));
+
+                // Send progress update every 3 seconds during text generation
+                if (now - lastProgressUpdate > 3000) {
+                  const approxChars = responseText.length;
+                  streamLog("debug", "AI", `Generating... (${Math.round(approxChars / 1000)}k chars)`);
+                  lastProgressUpdate = now;
+                }
               }
+            } else if (event.type === "message_stop") {
+              console.log(`[STREAM] Message stop received after ${eventCount} events`);
+              streamLog("info", "AI", "Response complete");
             }
           }
+          console.log(`[STREAM] AI stream finished after ${eventCount} events`);
+
+          streamLog("info", "AI", `Generation complete. Parsing response...`);
+          console.log("[STREAM] AI stream done, getting final message...");
 
           // Get final message for usage stats
           const finalMessage = await stream.finalMessage();
+          console.log("[STREAM] Got final message, parsing cards...");
 
           // Parse the response
           const generatedCards = parseGeneratedCards(responseText);
+          streamLog("info", "AI", `Parsed ${generatedCards.length} cards from response`);
+          console.log(`[STREAM] Parsed ${generatedCards.length} cards`);
 
           // Filter out duplicates in two passes:
           // 1. Remove cards that match existing revealed cards
@@ -347,6 +444,7 @@ export async function POST(request: Request) {
           const seenNames: string[] = [...existingCardNames];
           const uniqueCards = generatedCards.filter(card => {
             if (isDuplicateCard(card.name, seenNames)) {
+              streamLog("debug", "DEDUP", `Removed duplicate: ${card.name}`);
               return false;
             }
             seenNames.push(card.name);
@@ -355,6 +453,9 @@ export async function POST(request: Request) {
 
           // Limit to the user's requested count
           const finalCards = uniqueCards.slice(0, cardCount);
+          if (generatedCards.length !== finalCards.length) {
+            streamLog("info", "AI", `Deduplication: ${generatedCards.length} → ${uniqueCards.length} → ${finalCards.length} cards`);
+          }
 
           // Calculate cost
           const inputTokens = finalMessage.usage.input_tokens;
@@ -367,39 +468,49 @@ export async function POST(request: Request) {
           const cardsFromAmadeus = finalCards.filter(c => c.amadeusActivityId).length;
 
           // Send final result
-          controller.enqueue(encoder.encode(
-            `data: ${JSON.stringify({
-              type: "complete",
-              cards: finalCards,
-              thinking: thinkingText,
-              stats: {
-                requested: cardCount,
-                actuallyRequested: requestedCount,
-                generated: generatedCards.length,
-                afterDedup: uniqueCards.length,
-                final: finalCards.length,
-                existingCount: existingCardNames.length,
-                fromRealExperiences: cardsFromAmadeus,
-                hasRealActivities: !!combinedExternalData,
-                amadeusCount,
-                googlePlacesCount,
-              },
-              usage: {
-                inputTokens,
-                outputTokens,
-                totalTokens: inputTokens + outputTokens,
-                costUsd: totalCost,
-              },
-            })}\n\n`
-          ));
+          console.log(`[STREAM] Sending complete event with ${finalCards.length} cards...`);
+          const completeEvent = {
+            type: "complete",
+            cards: finalCards,
+            thinking: thinkingText,
+            stats: {
+              requested: cardCount,
+              actuallyRequested: requestedCount,
+              generated: generatedCards.length,
+              afterDedup: uniqueCards.length,
+              final: finalCards.length,
+              existingCount: existingCardNames.length,
+              fromRealExperiences: cardsFromAmadeus,
+              hasRealActivities: !!combinedExternalData,
+              amadeusCount,
+              googlePlacesCount,
+            },
+            usage: {
+              inputTokens,
+              outputTokens,
+              totalTokens: inputTokens + outputTokens,
+              costUsd: totalCost,
+            },
+          };
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(completeEvent)}\n\n`));
+          console.log("[STREAM] Complete event sent!");
+          } finally {
+            if (heartbeatInterval) clearInterval(heartbeatInterval);
+            console.log("[STREAM] Heartbeat cleared");
+          }
 
+          console.log("[STREAM] Closing controller...");
           controller.close();
+          console.log("[STREAM] Controller closed!");
         } catch (error) {
+          console.error("[STREAM] Error caught:", error);
+          if (heartbeatInterval) clearInterval(heartbeatInterval);
           aiLogger.error("Stream error:", error);
           controller.enqueue(encoder.encode(
             `data: ${JSON.stringify({ type: "error", error: error instanceof Error ? error.message : "Generation failed" })}\n\n`
           ));
           controller.close();
+          console.log("[STREAM] Controller closed after error");
         }
       },
     });
@@ -462,15 +573,19 @@ async function enrichCardWithPlaceData(
 
 // Save generated cards to database
 export async function PUT(request: Request) {
+  console.log("[SAVE] Starting card save...");
+
   try {
     const supabase = await createClient();
 
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
+      console.log("[SAVE] Unauthorized - no user");
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const { journeyId, destinationId, cards, prompt } = await request.json();
+    console.log(`[SAVE] Saving ${cards?.length || 0} cards to destination ${destinationId}`);
 
     if (!journeyId || !destinationId || !cards || !Array.isArray(cards)) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
@@ -554,15 +669,18 @@ export async function PUT(request: Request) {
       .select();
 
     if (insertError) {
+      console.error("[SAVE] Insert error:", insertError);
       apiLogger.error("Insert error:", insertError);
       return NextResponse.json({ error: "Failed to save cards" }, { status: 500 });
     }
 
+    console.log(`[SAVE] Successfully saved ${insertedCards?.length || 0} cards`);
     return NextResponse.json({
       success: true,
       savedCount: insertedCards?.length || 0,
     });
   } catch (error) {
+    console.error("[SAVE] Error:", error);
     apiLogger.error("Save error:", error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Save failed" },

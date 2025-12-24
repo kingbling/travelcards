@@ -98,9 +98,23 @@ export default function DestinationPage() {
         if (res.ok) {
           const data = await res.json();
           setDestination(data);
+        } else {
+          const errorData = await res.json().catch(() => ({ error: 'Unknown error' }));
+          console.error("[DESTINATION] Failed to fetch destination:", {
+            status: res.status,
+            error: errorData.error,
+            slug,
+            destinationId,
+          });
+          setError(errorData.error || "Failed to load destination");
         }
-      } catch {
-        // Error fetching
+      } catch (err) {
+        console.error("[DESTINATION] Network error fetching destination:", {
+          error: err,
+          slug,
+          destinationId,
+        });
+        setError("Network error. Please check your connection and try again.");
       } finally {
         setLoading(false);
       }
@@ -157,11 +171,20 @@ export default function DestinationPage() {
         }, 1500);
       } else {
         // Show error message
+        console.error("[DESTINATION] Reveal failed:", {
+          status: res.status,
+          error: data.error,
+          cardId: revealingCard.id,
+        });
         setShowReveal(false);
         setRevealingCard(null);
         setError(data.error || "Failed to reveal card");
       }
     } catch (e) {
+      console.error("[DESTINATION] Network error during reveal:", {
+        error: e,
+        cardId: revealingCard.id,
+      });
       setShowReveal(false);
       setRevealingCard(null);
       setError("Failed to reveal card. Please try again.");
@@ -261,6 +284,10 @@ export default function DestinationPage() {
         }
       } catch (e) {
         // Invalid stored data, continue to fresh shuffle
+        console.debug("[DESTINATION] Invalid shuffle cache, regenerating:", {
+          error: e,
+          storageKey,
+        });
       }
     }
 

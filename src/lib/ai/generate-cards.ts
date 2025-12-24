@@ -19,6 +19,29 @@ export interface DestinationContext {
   waypoints?: string[];
 }
 
+// Slim experience format for AI prompt (minimal data)
+export interface SlimExperience {
+  id: string;
+  source: "amadeus" | "google_places";
+  name: string;
+  price: string;
+  categories?: string[];
+}
+
+// Full experience data for enrichment (kept in memory, not sent to AI)
+export interface FullExperience {
+  id: string;
+  source: "amadeus" | "google_places";
+  name: string;
+  price: string;
+  categories?: string[];
+  bookingUrl?: string;
+  pictureUrl?: string;
+  address?: string;
+  lat?: number;
+  lng?: number;
+}
+
 export interface GenerationContext {
   journeyName: string;
   recipientName: string | null;
@@ -26,9 +49,28 @@ export interface GenerationContext {
   destination: DestinationContext;
   existingCards: string[];
   categoryStats: Record<string, number>;
-  realActivities?: string; // Formatted real activities from Amadeus
+  slimExperiences?: SlimExperience[]; // Minimal data for AI prompt
 }
 
+// What AI returns - either a reference to existing data or a new experience
+export interface AICardOutput {
+  ref?: string; // ID reference to existing experience (e.g., "google:ChIJ123" or "amadeus:ABC")
+  name: string;
+  description: string;
+  category: CardCategory;
+  targetProfile: TargetProfile;
+  rarity: Rarity;
+  estimatedCost: string | null;
+  durationHours: number | null;
+  bookingMethod: string | null;
+  // Only needed for AI-generated experiences (not from our data)
+  bookingUrl?: string | null;
+  pictureUrl?: string | null;
+  locationName?: string | null;
+  locationAddress?: string | null;
+}
+
+// Final enriched card with all data
 export interface GeneratedCard {
   name: string;
   description: string;
@@ -43,6 +85,9 @@ export interface GeneratedCard {
   locationAddress: string | null;
   amadeusActivityId: string | null;
   pictureUrl: string | null;
+  locationLat?: number | null;
+  locationLng?: number | null;
+  googlePlaceId?: string | null;
 }
 
 // Get season from date and hemisphere
@@ -85,9 +130,9 @@ function formatDateRange(start: string | null, end: string | null): string {
   return `${startStr} - ${endStr}`;
 }
 
-// Build the user prompt for AI
+// Build the user prompt for AI - now with slim experience references
 export function buildPrompt(context: GenerationContext, cardCount: number): string {
-  const { destination, travelers, existingCards, categoryStats, realActivities } = context;
+  const { destination, travelers, existingCards, categoryStats, slimExperiences } = context;
 
   const season = getSeason(destination.startDate, destination.country);
   const dateRange = formatDateRange(destination.startDate, destination.endDate);
@@ -112,151 +157,91 @@ export function buildPrompt(context: GenerationContext, cardCount: number): stri
     .map(([cat, count]) => `${cat}: ${count}`)
     .join(", ");
   const categorySection = categoryLines
-    ? `\nCurrent card distribution: ${categoryLines}. Aim for variety in categories not yet covered.`
+    ? `\nCurrent card distribution: ${categoryLines}. Aim for variety.`
     : "";
 
   // Road trip specific section
   const routeSection = destination.type === "roadtrip" && destination.waypoints?.length
-    ? `\nROUTE STOPS: ${destination.waypoints.join(" → ")}\nInclude experiences for stops along the way.`
+    ? `\nROUTE: ${destination.waypoints.join(" → ")}`
     : "";
 
-  // Real activities section (unified JSON from Amadeus + Google Places)
-  const hasRealActivities = !!realActivities;
+  // Slim experiences section - just IDs and names!
+  const hasExperiences = slimExperiences && slimExperiences.length > 0;
+  const minFromData = Math.floor(cardCount * 0.6);
+  const aiOriginalCount = cardCount - minFromData;
 
-  // Calculate how many real experiences to use vs local knowledge
-  const minRealExperiences = Math.floor(cardCount * 0.65); // 65% minimum from real data
-  const maxRealExperiences = Math.ceil(cardCount * 0.75); // 75% maximum from real data
-  const localGemsCount = cardCount - minRealExperiences; // remaining for local gems
-
-  const activitiesSection = hasRealActivities
+  const experiencesSection = hasExperiences
     ? `
-AVAILABLE_EXPERIENCES (unified JSON from Amadeus tours + Google Places):
-\`\`\`json
-${realActivities}
-\`\`\`
-
-EXPERIENCE FIELDS:
-- source: "amadeus" (bookable tours) or "google_places" (restaurants, attractions)
-- id: Copy to amadeusActivityId if source="amadeus"
-- name, price, categories, bookingUrl, pictureUrl, address
+AVAILABLE EXPERIENCES (${slimExperiences.length} options):
+${slimExperiences.map(e => `• [${e.source}:${e.id}] ${e.name} - ${e.price}`).join("\n")}
 `
     : "";
 
-  const requirementsSection = hasRealActivities
+  const requirementsSection = hasExperiences
     ? `REQUIREMENTS:
-1. USE REAL EXPERIENCES FOR MAJORITY OF CARDS: Select ${minRealExperiences}-${maxRealExperiences} experiences from the AVAILABLE_EXPERIENCES JSON above.
-   - source="amadeus": Bookable tours with real prices - COPY bookingUrl and id exactly
-   - source="google_places": Restaurants/attractions - use for dining and local spots
-   - IMPORTANT: Copy id to amadeusActivityId field, bookingUrl, and pictureUrl EXACTLY from the JSON
-   - Browse through ALL the experiences in the JSON to find the best matches
-
-2. SUPPLEMENT WITH LOCAL KNOWLEDGE: Add ${localGemsCount} free/cheap experiences NOT in the JSON:
-   - Parks, beaches, viewpoints, street exploration
-   - Street food, markets, local cafes
-   - Use web search to find festivals/events happening during the travel dates
-   - These make the trip feel authentic, not just tourist activities
-
-3. MATCH TO TRAVELERS: Prioritize experiences matching their interests:
-${travelerLines}
-   - Ensure at least 2 experiences perfectly match the ⭐ GIFT RECIPIENT
-
-4. BUDGET MIX: Ensure variety in pricing:
-   - Include some free/cheap options (walks, parks, street food)
-   - Include mid-range bookable experiences
-   - 1-2 splurge options for special occasions
-
-5. RARITY reflects uniqueness, NOT price:
-   - common = popular, easy to book
-   - uncommon = lesser-known but real
-   - rare = requires timing or local knowledge
-   - legendary = truly exceptional (use sparingly)`
+1. SELECT ${minFromData}+ experiences from the list above using their [source:id] reference
+2. ADD ${aiOriginalCount} original experiences (free local gems, events via web search)
+3. Match to traveler interests, especially the ⭐ GIFT RECIPIENT
+4. Mix budget levels: free → cheap → mid-range → 1-2 splurges`
     : `REQUIREMENTS:
-1. BUDGET DIVERSITY (this is critical!):
-   - 40% FREE experiences (parks, beaches, walks, viewpoints, street exploration)
-   - 30% CHEAP experiences (under $20pp - street food, markets, local cafes)
-   - 20% MODERATE experiences ($20-80pp - restaurants, museums, tours)
-   - 10% SPLURGE experiences ($80+pp - fine dining, exclusive tours) - max 1 per batch
+1. Create ${cardCount} specific experiences for ${destination.name}
+2. Budget mix: 40% free, 30% cheap (<$20), 20% mid-range, 10% splurge
+3. Use web search to find current events/festivals
+4. Match to traveler interests`;
 
-2. Each experience must be specific to ${destination.name} - real venues, actual activities
-
-3. Match experiences to traveler interests - especially the gift recipient
-
-4. Include a mix of:
-   - Family-friendly activities everyone can enjoy
-   - Age-appropriate experiences (kids activities for children)
-   - Couple experiences for the adults
-   - Use web search to find festivals/events happening during the travel dates
-
-5. Rarity reflects uniqueness, NOT price:
-   - common = easy to do, popular spots
-   - uncommon = lesser-known local favorites
-   - rare = requires timing or local knowledge
-   - legendary = truly once-in-a-lifetime (use sparingly)`;
-
-  return `Create ${cardCount} UNIQUE experience cards for this trip:
+  return `Create ${cardCount} experience cards for:
 
 DESTINATION: ${destination.name}${destination.country ? `, ${destination.country}` : ""}
-DATES: ${dateRange}
-SEASON: ${season}
-${routeSection}
+DATES: ${dateRange} (${season})${routeSection}
 
 TRAVELERS:
 ${travelerLines}
-${activitiesSection}
-${existingSection}
-${categorySection}
+${experiencesSection}${existingSection}${categorySection}
 
 ${requirementsSection}
 
-Return a JSON array with exactly this structure for each card:
+OUTPUT FORMAT - JSON array:
 [
   {
+    "ref": "[source:id] from list above, OR null for your original ideas",
     "name": "Experience title (max 60 chars)",
-    "description": "2-3 vivid sentences that make them excited to do this",
+    "description": "2-3 exciting sentences",
     "category": "food|wine|animals|art|nature|culture|adventure|family|spa|music",
     "targetProfile": "solo|couple|family|kids",
     "rarity": "common|uncommon|rare|legendary",
-    "estimatedCost": "Local price + USD equivalent, e.g. 'R150 (~$8)' or 'Free'",
+    "estimatedCost": "Price with USD, e.g. 'R150 (~$8)' or 'Free'",
     "durationHours": number,
-    "bookingMethod": "How to book/organize: 'Book via website', 'Reserve by phone', 'Just show up', 'Bring your own wine and blanket', etc.",
-    "bookingUrl": "Direct URL to book or venue website, or null if just show up",
-    "locationName": "Venue or spot name for the map pin",
-    "locationAddress": "Full address or landmark description for Google Maps, e.g. 'Table Mountain, Cape Town, South Africa'",
-    "amadeusActivityId": "ID from the real experiences list if selected from there, or null",
-    "pictureUrl": "Image URL from the real experiences list if available, or null"
+    "bookingMethod": "How to book/access",
+    "locationName": "Venue name (only if ref is null)",
+    "locationAddress": "Address (only if ref is null)",
+    "bookingUrl": "URL (only if ref is null and you found one via web search)",
+    "pictureUrl": "Image URL (only if ref is null and you found one via web search)"
   }
 ]
 
-Return ONLY the JSON array, no other text.`;
+IMPORTANT: When using "ref", we already have the location, URL, and image - just provide the creative fields (name, description, category, etc.)
+
+Return ONLY the JSON array.`;
 }
 
-// System prompt for the AI
-export const SYSTEM_PROMPT = `You are a local travel guide who knows destinations like a resident, not a tourist. You create experience cards that feel authentic and diverse - from free street discoveries to occasional splurges.
+// System prompt for the AI - concise version
+export const SYSTEM_PROMPT = `You are a local travel guide creating experience cards. Be authentic and diverse.
 
-Your philosophy:
-- MOST experiences should be affordable or free (local parks, street food, markets, beaches, walks)
-- Some mid-range options (nice restaurants, day tours, museums)
-- Only 1-2 splurge experiences per batch (fine dining, exclusive tours)
-- Prioritize what locals actually do, not just tourist attractions
+WHEN SELECTING FROM AVAILABLE EXPERIENCES:
+- Use "ref" field with exact [source:id] format
+- We have all the details (pictures, URLs, coordinates) - just add creative description
+- Pick experiences matching traveler interests
 
-You know:
-- The best cheap eats and street food spots
-- Free activities: parks, viewpoints, neighborhoods to explore, street art
-- Local markets, beaches, hiking trails
-- Family-friendly spots that won't break the bank
-- Where to go for a special occasion (but sparingly)
+WHEN ADDING YOUR OWN IDEAS:
+- Set ref to null
+- Provide locationName and locationAddress
+- Use web search ONLY for current events/festivals during travel dates
+- If you find a booking URL or image via web search, include it
 
-Be specific and practical:
-- Use real venue names and locations
-- For experiences from AVAILABLE_EXPERIENCES: Use the exact price.display value provided (already in local currency with USD)
-- For your own original ideas: Estimate costs in LOCAL CURRENCY with USD equivalent: "R150 (~$8)", "€25 (~$27)", "Free"
-- Many things should be under $20 or free
-- Include practical tips locals would know
-- Mix famous spots with hidden gems
+BUDGET MIX: Mostly free/cheap, some mid-range, 1-2 splurges max.
+PRICING: Use local currency + USD, e.g. "R150 (~$8)" or "Free"
 
-WEB SEARCH: You can search the web to find seasonal events, festivals, or special happenings during the travel dates. Only use web search for time-sensitive local events - all other info comes from the provided JSON data.
-
-Remember: The best travel memories often cost nothing, but when you recommend something paid, make sure it's real and bookable.`;
+Be specific with real venues. Prioritize what locals do, not just tourist spots.`;
 
 // Parse AI response into structured cards
 export function parseGeneratedCards(response: string): GeneratedCard[] {

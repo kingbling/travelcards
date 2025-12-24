@@ -130,78 +130,79 @@ DESTINATION: ${countryContext} (${context.destination.destination_type})
 TRAVELERS:
 ${travelersSection}
 
-TASK: Generate ${count} small, delightful treats specifically for ${countryContext}.
+TASK: Generate ${count} simple, spontaneous treats for this trip.
 
-STEP 1 - ANALYZE TRAVELER INTERESTS:
-First, think through what the travelers enjoy doing based on their interests listed above:
-- What activities align with their hobbies/passions?
-- What cultural experiences would they appreciate?
-- What self-care or wellness activities suit their style?
-- What culinary experiences match their food interests?
-- Consider their ages and group dynamics
+WHAT TREATS ARE:
+Treats are small pleasures that take 10-60 minutes. They're NOT activities or excursions.
+Think: things you'd do to treat yourself or your travel companions on a relaxed day.
 
-STEP 2 - GENERATE COUNTRY-SPECIFIC TREATS:
-CRITICAL: ALL treats must be specific to ${context.destination.country || context.destination.name}.
-DO NOT suggest generic treats like "get a massage" - make it country-specific like "Get a traditional ${context.destination.country} massage" or cuisine-specific like "Cook [local dish] yourself".
+GOOD EXAMPLES (written for the recipient):
 
-TREATS should be:
-- Simple, doable activities that DON'T require advance booking
-- 100% SPECIFIC to ${context.destination.country || context.destination.name} - mention the country/cuisine/culture explicitly in the treat name and description
-- HIGHLY DIVERSE across multiple categories:
-  * Wellness & Self-Care: massages, spa treatments, yoga, meditation spots
-  * Culinary: cooking local dishes, trying breakfast specialties, market food tours, street food
-  * Cultural: language learning, local customs, traditional crafts, festivals
-  * Nature: hiking, beaches, parks, sunrise/sunset viewing, wildlife
-  * Creative: photography walks, sketching, journaling, local art
-  * Social: meeting locals, group activities, family moments
-  * Adventure: trying new things, stepping outside comfort zone
-  * Mindfulness: quiet reflection, gratitude, slowing down
-  * Music & Arts: local performances, museums, galleries, street music
-  * Sports & Active: local sports, dance classes, walking tours, cycling
+For the main traveler (solo/adult time):
+- "Get a massage while the kids are looked after"
+- "Enjoy a quiet coffee alone at a café"
+- "Take a solo sunset walk on the beach"
+- "Receive breakfast in bed"
+- "Have a glass of local wine in peace"
 
-Examples for ${context.destination.country || context.destination.name}:
-  ${context.destination.country === "Thailand" ? `
-  * "Get a traditional Thai massage at a local spa"
-  * "Cook pad thai from scratch at your accommodation"
-  * "Try khao man gai for breakfast at a street stall"
-  * "Sample three different Thai street desserts"
-  * "Learn to make Thai iced tea"` : context.destination.country === "Italy" ? `
-  * "Get an Italian espresso at a local bar"
-  * "Make fresh pasta from scratch"
-  * "Try authentic Italian gelato from 3 different gelaterias"
-  * "Learn basic Italian coffee ordering phrases"
-  * "Buy fresh bread from a local panetteria"` : `
-  * "Try the local breakfast specialty"
-  * "Cook a traditional ${context.destination.country || "local"} dish yourself"
-  * "Get a ${context.destination.country || "local"} massage/spa treatment"
-  * "Sample local street food specific to this region"
-  * "Learn basic phrases in the local language"`}
+For the kids:
+- "Get ice cream from a street vendor"
+- "Have a movie night with local snacks"
+- "Dance party in the room"
+- "Paint or draw together"
 
-- AVOID: overly sentimental or cringy language, forced sentimentality, cheesy photo challenges
-- Focus on: authentic experiences, self-care, food/cooking, cultural connection, active pursuits, creative expression
-- Budget-friendly or FREE (60% free, 30% under $20, 10% under $50)
-- Appropriate for all travelers in the group
-- Ensure variety - don't repeat similar activities
+For everyone together:
+- "Have a family picnic with market food"
+- "Try local street food together"
+- "Sundowners on the beach (juice for kids, wine for adults)"
+- "Cook a local meal together as a family"
 
-PERSONALIZATION:
-${context.recipientGender !== "neutral" ? `- Consider that the recipient is ${context.recipientGender}` : ""}
-${context.travelers.some((t) => t.interests.length > 0) ? `- Incorporate traveler interests: ${context.travelers.flatMap((t) => t.interests).join(", ")}` : ""}
-- EVERY treat MUST explicitly mention ${context.destination.country || context.destination.name} or specific local dishes/experiences from this destination
-- Use actual dish names, local customs, and country-specific activities (e.g., "tonkotsu ramen" for Japan, "cacio e pepe" for Italy, "pho" for Vietnam)
+Simple pampering:
+- "Have a bath drawn for you with candles"
+- "Get fresh pastries brought to your room"
+- "Sleep in while someone else handles the kids"
+
+Use your knowledge of ${countryContext} to make treats specific (e.g., mention actual local dishes, drinks, or customs where natural).
+
+BAD EXAMPLES (these are activities, NOT treats):
+- "Visit the penguin colony at Boulders Beach" (that's an excursion)
+- "Hike Table Mountain" (half-day activity)
+- "Explore the colorful Bo-Kaap neighborhood" (sightseeing)
+- "Take a wine tour of Stellenbosch" (organized activity)
+- "Learn traditional dance" (class/activity)
+
+THE DIFFERENCE:
+- Treats = simple pleasures you can do spontaneously in under an hour
+- Activities = things that require planning, travel, or significant time
+
+VARIETY:
+Mix these types across your ${count} treats:
+- Self-care: massage, bath, sleeping in, quiet time
+- Food/drink: trying a local dish, buying wine, getting ice cream, cooking
+- Simple moments: sunset with drinks, picnic, coffee break, beach time
+- Little luxuries: room service, fresh flowers, local chocolates
+
+${context.travelers.some((t) => t.interests.length > 0) ? `
+PERSONALIZATION (subtle):
+The travelers enjoy: ${context.travelers.flatMap((t) => t.interests).join(", ")}
+Weave these interests naturally into some treats (e.g., if they like art, "sketch while having coffee").` : ""}
+
+LOCAL FLAVOR (subtle, not forced):
+You can mention local food/drink names where natural (e.g., "rooibos tea" in South Africa, "espresso" in Italy).
+But don't make every treat about cultural education. Some can be universal pleasures enjoyed in a nice setting.
 
 TONE:
-- Natural and straightforward language
-- No excessive exclamation marks or emojis
-- Genuine and practical, not forced or overly enthusiastic
-- Treat these as real suggestions you'd give a friend
+- Casual, like suggestions from a friend
+- No forced enthusiasm or exclamation marks
+- Practical and genuine
 
 Return JSON array (${count} treats):
 [
   {
     "name": "Short title (3-6 words)",
-    "description": "2-3 sentences describing the treat and why it's special",
+    "description": "1-2 sentences, simple and direct",
     "category": "food" | "wine" | "animals" | "art" | "nature" | "culture" | "adventure" | "family" | "spa" | "music",
-    "rarity": "common" | "uncommon" | "rare" (most should be common or uncommon),
+    "rarity": "common" | "uncommon" | "rare",
     "estimatedCost": "Free" | "$5" | "$10" etc.
   }
 ]
