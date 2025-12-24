@@ -16,6 +16,8 @@ export default function PinEntryPage() {
   const [isUnlocking, setIsUnlocking] = useState(false);
   const [journeyName, setJourneyName] = useState<string | null>(null);
   const [recipientName, setRecipientName] = useState<string | null>(null);
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [journeyError, setJourneyError] = useState<string | null>(null);
 
   // Check if already authenticated or if user is curator
   useEffect(() => {
@@ -42,8 +44,9 @@ export default function PinEntryPage() {
             router.replace(`/j/${slug}/intro`);
           }
         }
-      } catch {
-        // Not a curator, continue with PIN entry
+      } catch (error) {
+        console.error("[AUTH] Authentication check failed:", error);
+        setAuthError("Failed to verify authentication. Please refresh the page.");
       }
     };
 
@@ -59,9 +62,12 @@ export default function PinEntryPage() {
           const data = await res.json();
           setJourneyName(data.name);
           setRecipientName(data.recipient_name);
+        } else {
+          setJourneyError("Journey not found. Please check your link.");
         }
-      } catch {
-        // Journey not found or error
+      } catch (error) {
+        console.error("[JOURNEY] Failed to fetch journey:", error);
+        setJourneyError("Failed to load journey information. Please refresh the page.");
       }
     }
     fetchJourney();
@@ -115,11 +121,13 @@ export default function PinEntryPage() {
         setActiveIndex(0);
         setIsUnlocking(false);
       }
-    } catch {
+    } catch (error) {
+      console.error("[PIN] Verification failed:", error);
       setError(true);
       setPin(["", "", "", ""]);
       setActiveIndex(0);
       setIsUnlocking(false);
+      setAuthError("Connection error. Please check your internet and try again.");
     }
   };
 
@@ -225,7 +233,7 @@ export default function PinEntryPage() {
           ))}
         </motion.div>
 
-        {/* Error message */}
+        {/* Error messages */}
         <AnimatePresence>
           {error && (
             <motion.p
@@ -235,6 +243,26 @@ export default function PinEntryPage() {
               exit={{ opacity: 0, y: -10 }}
             >
               Incorrect code. Please try again.
+            </motion.p>
+          )}
+          {authError && (
+            <motion.p
+              className="text-red-500 text-sm mb-4 text-center"
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+            >
+              {authError}
+            </motion.p>
+          )}
+          {journeyError && (
+            <motion.p
+              className="text-red-500 text-sm mb-4 text-center"
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+            >
+              {journeyError}
             </motion.p>
           )}
         </AnimatePresence>

@@ -40,14 +40,15 @@ export function ResetQuickAction({ journeyId, revealedCount, treatsRevealedCount
 
       const result = await res.json();
 
-      // Refresh the page data
-      router.refresh();
-
       // Show success message
       const successText = result.message ||
         `Reset complete! ${result.stats.cardsReset} cards reset, ${result.stats.treatsReset || 0} treats reset`;
       setMessage({ type: 'success', text: successText });
-      setTimeout(() => setMessage(null), 5000);
+
+      // Hard refresh the page to ensure all data is reloaded
+      setTimeout(() => {
+        window.location.reload();
+      }, 1500);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Reset failed";
       setMessage({ type: 'error', text: errorMessage });
@@ -152,28 +153,32 @@ export function ResetQuickAction({ journeyId, revealedCount, treatsRevealedCount
       <button
         onClick={() => setShowConfirm(true)}
         disabled={isResetting}
-        className="bg-white rounded-2xl p-6 shadow-sm hover:shadow-lg transition-shadow border border-red-200 text-left disabled:opacity-50"
+        className="bg-white rounded-xl p-5 shadow-sm hover:shadow-md transition-shadow border border-[#E5DDD5] text-left disabled:opacity-50 w-full"
       >
-      <div className="w-8 h-8 mb-4 rounded-full bg-red-500/10 flex items-center justify-center">
-        {isResetting ? (
-          <Loader2 className="w-5 h-5 text-red-500 animate-spin" />
-        ) : (
-          <RotateCcw className="w-5 h-5 text-red-500" />
-        )}
-      </div>
-      <h3 className="font-serif text-xl text-[#2C1810] mb-2">
-        {isResetting ? "Resetting..." : "Reset Reveals"}
-      </h3>
-      <p className="text-[#6B5344] text-sm">
-        Start over with new reveal schedule
-      </p>
-      {totalRevealed > 0 && (
-        <p className="text-sm mt-2 text-red-600">
-          {revealedCount} {revealedCount === 1 ? 'card' : 'cards'}
-          {treatsRevealedCount > 0 && `, ${treatsRevealedCount} ${treatsRevealedCount === 1 ? 'treat' : 'treats'}`} revealed
+        <div className="flex items-center gap-3 mb-3">
+          <div className="w-10 h-10 rounded-full bg-red-500/10 flex items-center justify-center flex-shrink-0">
+            {isResetting ? (
+              <Loader2 className="w-5 h-5 text-red-500 animate-spin" />
+            ) : (
+              <RotateCcw className="w-5 h-5 text-red-500" />
+            )}
+          </div>
+          <div className="flex-1 min-w-0">
+            <h3 className="font-medium text-[#2C1810] break-words">
+              {isResetting ? "Resetting..." : "Reset Reveals"}
+            </h3>
+            {totalRevealed > 0 && (
+              <p className="text-xs text-red-600 break-words">
+                {revealedCount} {revealedCount === 1 ? 'card' : 'cards'}
+                {treatsRevealedCount > 0 && `, ${treatsRevealedCount} ${treatsRevealedCount === 1 ? 'treat' : 'treats'}`} revealed
+              </p>
+            )}
+          </div>
+        </div>
+        <p className="text-sm text-[#6B5344] break-words">
+          Start over with new reveal schedule
         </p>
-      )}
-    </button>
+      </button>
     </>
   );
 }

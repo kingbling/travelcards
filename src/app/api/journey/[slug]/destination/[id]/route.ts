@@ -9,7 +9,7 @@ export async function GET(
 ) {
   const { slug, id: destinationId } = await params;
 
-  const result = await verifyJourneyAccess(slug, "id, name, is_published, curator_id, reveals_per_week");
+  const result = await verifyJourneyAccess(slug, "id, name, is_published, curator_id, reveals_per_week, reveal_card_choices");
   if (!isJourneyAuthSuccess(result)) {
     return result.response;
   }
@@ -18,6 +18,7 @@ export async function GET(
     id: string;
     name: string;
     reveals_per_week?: number | null;
+    reveal_card_choices?: number | null;
   };
 
   const supabase = await createClient();
@@ -38,7 +39,8 @@ export async function GET(
     return NextResponse.json({ error: "Destination not found" }, { status: 404 });
   }
 
-  // Get approved cards for this destination
+  // Get approved cards for this destination in random order
+  // Using PostgreSQL's random() function for true server-side randomization
   const { data: cards } = await supabase
     .from("cards")
     .select(`
@@ -57,7 +59,7 @@ export async function GET(
     `)
     .eq("destination_id", destinationId)
     .eq("status", "approved")
-    .order("order_index", { ascending: true });
+    .order("random", { ascending: true });
 
   // Get quota state for cards
   const cardsQuotaState = await getCardsQuotaState(
@@ -119,6 +121,7 @@ export async function GET(
     journey_name: journey.name,
     cards: cards || [],
     cardsQuotaState: cardsQuotaStateObj,
+    revealCardChoices: journey.reveal_card_choices || 1,
     quotaInfo: {
       revealsPerWeek: quotaLimit,
       revealsThisWeek: revealsThisWeek || 0,

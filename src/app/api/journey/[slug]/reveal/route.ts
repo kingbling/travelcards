@@ -77,7 +77,25 @@ export async function POST(
     );
   }
 
-  // Mark card as revealed
+  // Create reveal record FIRST (quota tracking must succeed before card is revealed)
+  const { error: revealError } = await supabase.from("reveals").insert({
+    card_id: cardId,
+    journey_id: journey.id,
+    revealed_at: new Date().toISOString(),
+  });
+
+  if (revealError) {
+    console.error("[REVEAL] Failed to create reveal record:", revealError);
+    return NextResponse.json(
+      {
+        error: "Failed to record reveal",
+        details: revealError.message,
+      },
+      { status: 500 }
+    );
+  }
+
+  // Mark card as revealed (only after reveal record succeeds)
   const { error: updateError } = await supabase
     .from("cards")
     .update({
@@ -87,25 +105,14 @@ export async function POST(
     .eq("id", cardId);
 
   if (updateError) {
+    console.error("[REVEAL] Card update failed after reveal recorded:", updateError);
     return NextResponse.json(
       {
-        error: "Failed to reveal card",
+        error: "Failed to update card status",
         details: updateError.message,
       },
       { status: 500 }
     );
-  }
-
-  // Create reveal record
-  const { error: revealError } = await supabase.from("reveals").insert({
-    card_id: cardId,
-    journey_id: journey.id,
-    revealed_at: new Date().toISOString(),
-  });
-
-  if (revealError) {
-    // Continue anyway - card is already revealed
-    console.error("[REVEAL] Failed to create reveal record:", revealError);
   }
 
   return NextResponse.json({

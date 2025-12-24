@@ -1,6 +1,7 @@
 import type { AmadeusActivityData } from "amadeus";
 import amadeus, { isAmadeusConfigured } from "./client";
 import { geocodeDestination, isGooglePlacesConfigured } from "../google/places";
+import { amadeusLogger, googleLogger } from "../logger";
 
 export interface AmadeusActivity {
   id: string;
@@ -35,7 +36,7 @@ export async function searchActivities(
   maxResults: number = 100
 ): Promise<AmadeusActivity[]> {
   if (!isAmadeusConfigured()) {
-    console.warn("Amadeus API not configured - returning empty results");
+    amadeusLogger.warn("API not configured - returning empty results");
     return [];
   }
 
@@ -46,7 +47,7 @@ export async function searchActivities(
 
     // Fetch multiple pages until we hit maxResults or run out of data
     while (allActivities.length < maxResults) {
-      console.log(`[AMADEUS] Fetching page at offset ${offset} (have ${allActivities.length} so far)`);
+      amadeusLogger.debug(`Fetching page at offset ${offset} (have ${allActivities.length} so far)`);
 
       const response = await amadeus.shopping.activities.get({
         latitude: params.latitude,
@@ -59,7 +60,7 @@ export async function searchActivities(
       const pageData = response.data || [];
 
       if (pageData.length === 0) {
-        console.log(`[AMADEUS] No more results at offset ${offset}`);
+        amadeusLogger.debug(`No more results at offset ${offset}`);
         break; // No more results
       }
 
@@ -80,11 +81,11 @@ export async function searchActivities(
       }));
 
       allActivities.push(...pageActivities);
-      console.log(`[AMADEUS] Page fetched ${pageData.length} activities (total: ${allActivities.length})`);
+      amadeusLogger.debug(`Page fetched ${pageData.length} activities (total: ${allActivities.length})`);
 
       // If we got fewer results than requested, we've reached the end
       if (pageData.length < pageSize) {
-        console.log(`[AMADEUS] Reached end of results (got ${pageData.length} < ${pageSize})`);
+        amadeusLogger.debug(`Reached end of results (got ${pageData.length} < ${pageSize})`);
         break;
       }
 
@@ -97,11 +98,11 @@ export async function searchActivities(
     }
 
     const limitedActivities = allActivities.slice(0, maxResults);
-    console.log(`[AMADEUS] Returning ${limitedActivities.length} activities (limited from ${allActivities.length})`);
+    amadeusLogger.info(`Returning ${limitedActivities.length} activities (limited from ${allActivities.length})`);
 
     return limitedActivities;
   } catch (error) {
-    console.error("Amadeus API error:", error);
+    amadeusLogger.error("API error:", error);
     return [];
   }
 }
@@ -244,17 +245,17 @@ export async function getDestinationCoordinates(
   // Check known destinations first (fast)
   for (const [key, coords] of Object.entries(knownDestinations)) {
     if (searchKey.includes(key) || key.includes(searchKey)) {
-      console.log(`Found ${destinationName} in known destinations`);
+      amadeusLogger.debug(`Found ${destinationName} in known destinations`);
       return coords;
     }
   }
 
   // Try Google Places API for geocoding
   if (isGooglePlacesConfigured()) {
-    console.log(`Geocoding ${destinationName} via Google Places API...`);
+    googleLogger.debug(`Geocoding ${destinationName} via API...`);
     const result = await geocodeDestination(destinationName, country);
     if (result) {
-      console.log(`Google Places found: ${result.formattedAddress}`);
+      googleLogger.info(`Found: ${result.formattedAddress}`);
       return {
         latitude: result.latitude,
         longitude: result.longitude,
@@ -262,6 +263,6 @@ export async function getDestinationCoordinates(
     }
   }
 
-  console.warn(`Unknown destination: ${destinationName} - no coordinates available`);
+  amadeusLogger.warn(`Unknown destination: ${destinationName} - no coordinates available`);
   return null;
 }

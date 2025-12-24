@@ -23,6 +23,7 @@ import {
   isGooglePlacesConfigured,
   type PlaceResult,
 } from "@/lib/google/places";
+import { amadeusLogger, googleLogger, aiLogger, apiLogger } from "@/lib/logger";
 
 // Force dynamic to prevent caching for SSE
 export const dynamic = "force-dynamic";
@@ -173,16 +174,16 @@ export async function POST(request: Request) {
           amadeusExperiences.push(...unifiedAmadeus);
           allExperiences.push(...unifiedAmadeus);
           amadeusCount = unifiedAmadeus.length;
-          console.log(`[AMADEUS] Found ${amadeusCount} activities for ${targetDestination.name}`);
-          console.log(`[AMADEUS] Raw data:`, JSON.stringify(unifiedAmadeus, null, 2));
+          amadeusLogger.info(`Found ${amadeusCount} activities for ${targetDestination.name}`);
+          amadeusLogger.debug("Raw data:", JSON.stringify(unifiedAmadeus, null, 2));
         }
       } catch (error) {
-        console.warn("[AMADEUS] Failed to fetch activities:", error);
+        amadeusLogger.warn("Failed to fetch activities:", error);
       }
 
       // Also fetch Google Places for restaurants, attractions, etc.
       if (isGooglePlacesConfigured()) {
-        console.log(`[GOOGLE] Starting Google Places search for ${targetDestination.name}`);
+        googleLogger.info(`Starting Google Places search for ${targetDestination.name}`);
         try {
           const searchQueries = [
             `best restaurants ${targetDestination.name}`,
@@ -201,14 +202,14 @@ export async function POST(request: Request) {
           for (const query of searchQueries) {
             try {
               const places = await textSearchPlaces(query, coords.latitude, coords.longitude);
-              console.log(`[GOOGLE] Query "${query}" returned ${places.length} results`);
+              googleLogger.debug(`Query "${query}" returned ${places.length} results`);
               allPlaces.push(...places);
             } catch (queryError) {
-              console.error(`[GOOGLE] Query "${query}" failed:`, queryError);
+              googleLogger.error(`Query "${query}" failed:`, queryError);
             }
           }
 
-          console.log(`[GOOGLE] Total raw results before deduplication: ${allPlaces.length}`);
+          googleLogger.debug(`Total raw results before deduplication: ${allPlaces.length}`);
 
           // Dedupe by placeId and limit to 100
           const uniquePlaces = Array.from(
@@ -216,32 +217,44 @@ export async function POST(request: Request) {
           );
           const limitedPlaces = uniquePlaces.slice(0, 100);
 
-          console.log(`[GOOGLE] After deduplication: ${uniquePlaces.length} unique places`);
-          console.log(`[GOOGLE] After limiting to 100: ${limitedPlaces.length} places`);
+          googleLogger.debug(`After deduplication: ${uniquePlaces.length} unique places`);
+          googleLogger.debug(`After limiting to 100: ${limitedPlaces.length} places`);
 
           if (limitedPlaces.length > 0) {
             const unifiedPlaces = await convertPlacesToUnified(limitedPlaces, targetDestination.country);
             googlePlacesExperiences.push(...unifiedPlaces);
             allExperiences.push(...unifiedPlaces);
             googlePlacesCount = unifiedPlaces.length;
-            console.log(`[GOOGLE] Found ${googlePlacesCount} unique places for ${targetDestination.name} (limited from ${uniquePlaces.length} total)`);
-            console.log(`[GOOGLE] Raw data:`, JSON.stringify(unifiedPlaces, null, 2));
+            googleLogger.info(`Found ${googlePlacesCount} unique places for ${targetDestination.name}`);
+            googleLogger.debug("Raw data:", JSON.stringify(unifiedPlaces, null, 2));
           } else {
-            console.warn(`[GOOGLE] No places found after processing!`);
+            googleLogger.warn("No places found after processing!");
           }
         } catch (error) {
-          console.error("[GOOGLE] Failed to fetch places:", error);
+          googleLogger.error("Failed to fetch places:", error);
         }
       } else {
-        console.warn("[GOOGLE] Google Places API not configured - skipping");
+        googleLogger.warn("Google Places API not configured - skipping");
       }
     } else {
-      console.log(`[RESEARCH] No coordinates found for ${targetDestination.name} - using AI knowledge only`);
+      aiLogger.info(`No coordinates found for ${targetDestination.name} - using AI knowledge only`);
     }
 
-    // Format as unified JSON
-    const combinedExternalData = allExperiences.length > 0
-      ? JSON.stringify(allExperiences, null, 2)
+    // Strip experiences to essential fields for AI (reduces token usage)
+    const slimExperiences = allExperiences.map(exp => ({
+      source: exp.source,
+      id: exp.id,
+      name: exp.name,
+      price: exp.price.display,
+      categories: exp.categories,
+      bookingUrl: exp.bookingUrl,
+      pictureUrl: exp.pictureUrl,
+      address: exp.location.address,
+    }));
+
+    // Format as slim JSON for AI prompt
+    const combinedExternalData = slimExperiences.length > 0
+      ? JSON.stringify(slimExperiences, null, 2)
       : undefined;
 
     // Build generation context
@@ -279,7 +292,7 @@ export async function POST(request: Request) {
             })}\n\n`
           ));
 
-          // Stream from Anthropic with extended thinking and web search
+          // Stream from Anthropic with extended thinking and web search (for seasonal events only)
           const stream = anthropic.messages.stream({
             model: AI_CONFIG.MODEL,
             max_tokens: AI_CONFIG.MAX_TOKENS.CARD_GENERATION,
@@ -291,7 +304,7 @@ export async function POST(request: Request) {
               {
                 type: "web_search_20250305",
                 name: "web_search",
-                max_uses: 5,
+                max_uses: 2,
               },
             ],
             system: SYSTEM_PROMPT,
@@ -305,16 +318,8 @@ export async function POST(request: Request) {
 
           // Stream events as they come
           for await (const event of stream) {
-            if (event.type === "content_block_start") {
-              const block = event.content_block as { type: string; name?: string };
-              // Notify when web search starts
-              if (block.type === "server_tool_use" && block.name === "web_search") {
-                controller.enqueue(encoder.encode(
-                  `data: ${JSON.stringify({ type: "thinking", content: "\n🔍 Searching the web...\n" })}\n\n`
-                ));
-              }
-            } else if (event.type === "content_block_delta") {
-              const delta = event.delta as { type: string; thinking?: string; text?: string; partial_json?: string };
+            if (event.type === "content_block_delta") {
+              const delta = event.delta as { type: string; thinking?: string; text?: string };
 
               if (delta.type === "thinking_delta" && delta.thinking) {
                 thinkingText += delta.thinking;
@@ -326,9 +331,6 @@ export async function POST(request: Request) {
                 controller.enqueue(encoder.encode(
                   `data: ${JSON.stringify({ type: "text", content: delta.text })}\n\n`
                 ));
-              } else if (delta.type === "server_tool_use_input_json_delta" && delta.partial_json) {
-                // Web search query being formed
-                thinkingText += delta.partial_json;
               }
             }
           }
@@ -393,7 +395,7 @@ export async function POST(request: Request) {
 
           controller.close();
         } catch (error) {
-          console.error("Stream error:", error);
+          aiLogger.error("Stream error:", error);
           controller.enqueue(encoder.encode(
             `data: ${JSON.stringify({ type: "error", error: error instanceof Error ? error.message : "Generation failed" })}\n\n`
           ));
@@ -410,7 +412,7 @@ export async function POST(request: Request) {
       },
     });
   } catch (error) {
-    console.error("Generation error:", error);
+    aiLogger.error("Generation error:", error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Generation failed" },
       { status: 500 }
@@ -452,7 +454,7 @@ async function enrichCardWithPlaceData(
       };
     }
   } catch (error) {
-    console.warn(`Failed to enrich location for ${card.locationName}:`, error);
+    googleLogger.warn(`Failed to enrich location for ${card.locationName}:`, error);
   }
 
   return { location_lat: null, location_lng: null, google_place_id: null };
@@ -552,7 +554,7 @@ export async function PUT(request: Request) {
       .select();
 
     if (insertError) {
-      console.error("Insert error:", insertError);
+      apiLogger.error("Insert error:", insertError);
       return NextResponse.json({ error: "Failed to save cards" }, { status: 500 });
     }
 
@@ -561,7 +563,7 @@ export async function PUT(request: Request) {
       savedCount: insertedCards?.length || 0,
     });
   } catch (error) {
-    console.error("Save error:", error);
+    apiLogger.error("Save error:", error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Save failed" },
       { status: 500 }

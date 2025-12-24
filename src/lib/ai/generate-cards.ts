@@ -1,4 +1,5 @@
 import type { CardCategory, TargetProfile, Rarity } from "@/types/database";
+import { aiLogger } from "@/lib/logger";
 
 export interface Traveler {
   name: string;
@@ -134,13 +135,10 @@ AVAILABLE_EXPERIENCES (unified JSON from Amadeus tours + Google Places):
 ${realActivities}
 \`\`\`
 
-EXPERIENCE SCHEMA:
+EXPERIENCE FIELDS:
 - source: "amadeus" (bookable tours) or "google_places" (restaurants, attractions)
-- id: Use this as amadeusActivityId in output if source is "amadeus"
-- bookingUrl: Direct booking link (use this in output)
-- pictureUrl: Image URL (use this in output)
-- price.display: Human-readable price
-- location: Address info for the map
+- id: Copy to amadeusActivityId if source="amadeus"
+- name, price, categories, bookingUrl, pictureUrl, address
 `
     : "";
 
@@ -155,6 +153,7 @@ EXPERIENCE SCHEMA:
 2. SUPPLEMENT WITH LOCAL KNOWLEDGE: Add ${localGemsCount} free/cheap experiences NOT in the JSON:
    - Parks, beaches, viewpoints, street exploration
    - Street food, markets, local cafes
+   - Use web search to find festivals/events happening during the travel dates
    - These make the trip feel authentic, not just tourist activities
 
 3. MATCH TO TRAVELERS: Prioritize experiences matching their interests:
@@ -186,6 +185,7 @@ ${travelerLines}
    - Family-friendly activities everyone can enjoy
    - Age-appropriate experiences (kids activities for children)
    - Couple experiences for the adults
+   - Use web search to find festivals/events happening during the travel dates
 
 5. Rarity reflects uniqueness, NOT price:
    - common = easy to do, popular spots
@@ -254,16 +254,7 @@ Be specific and practical:
 - Include practical tips locals would know
 - Mix famous spots with hidden gems
 
-WEB SEARCH CAPABILITIES:
-- You have access to web search. USE IT to find:
-  - Current opening hours and pricing
-  - Booking URLs for tours and experiences
-  - Recent reviews and recommendations
-  - Seasonal events or festivals
-  - Restaurant menus and reservation links
-- When Amadeus data is provided, use web search to VERIFY and ENRICH the information
-- When no Amadeus data is available, use web search to find REAL, BOOKABLE experiences
-- Always prefer verified, bookable experiences over generic recommendations
+WEB SEARCH: You can search the web to find seasonal events, festivals, or special happenings during the travel dates. Only use web search for time-sensitive local events - all other info comes from the provided JSON data.
 
 Remember: The best travel memories often cost nothing, but when you recommend something paid, make sure it's real and bookable.`;
 
@@ -273,14 +264,14 @@ export function parseGeneratedCards(response: string): GeneratedCard[] {
     // Try to extract JSON from the response
     const jsonMatch = response.match(/\[[\s\S]*\]/);
     if (!jsonMatch) {
-      console.error("No JSON array found in response");
+      aiLogger.error("No JSON array found in response");
       return [];
     }
 
     const parsed = JSON.parse(jsonMatch[0]);
 
     if (!Array.isArray(parsed)) {
-      console.error("Parsed response is not an array");
+      aiLogger.error("Parsed response is not an array");
       return [];
     }
 
@@ -301,7 +292,7 @@ export function parseGeneratedCards(response: string): GeneratedCard[] {
       pictureUrl: card.pictureUrl && card.pictureUrl !== "null" ? String(card.pictureUrl) : null,
     }));
   } catch (error) {
-    console.error("Failed to parse AI response:", error);
+    aiLogger.error("Failed to parse AI response:", error);
     return [];
   }
 }

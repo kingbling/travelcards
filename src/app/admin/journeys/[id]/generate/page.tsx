@@ -256,8 +256,8 @@ GENERATE: ${cardCount} unique experience cards tailored to this group`;
               } else if (data.type === "error") {
                 throw new Error(data.error);
               }
-            } catch (parseError) {
-              console.error("Parse error:", parseError);
+            } catch {
+              // Skip malformed SSE events
             }
           }
         }

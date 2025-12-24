@@ -107,7 +107,7 @@ export function getCurrencyForCountry(country: string | null): string {
  */
 export async function getExchangeRates(): Promise<Record<string, number>> {
   // Check cache first
-  if (cachedRates && Date.now() - cachedRates.timestamp < CACHE_TTL) {
+  if (cachedRates && Date.now() - cachedRates.timestamp < CACHE_TTL && cachedRates.rates) {
     return cachedRates.rates;
   }
 
@@ -122,6 +122,11 @@ export async function getExchangeRates(): Promise<Record<string, number>> {
     }
 
     const data = await response.json() as ExchangeRateResponse;
+
+    // Ensure conversion_rates exists and is valid
+    if (!data.conversion_rates || typeof data.conversion_rates !== 'object') {
+      throw new Error('Invalid exchange rate response structure');
+    }
 
     cachedRates = {
       rates: data.conversion_rates,
@@ -165,6 +170,10 @@ export async function convertUSDToLocal(
   localCurrency: string
 ): Promise<number> {
   const rates = await getExchangeRates();
+  if (!rates) {
+    console.warn(`Exchange rates unavailable, using rate of 1 for ${localCurrency}`);
+    return usdAmount;
+  }
   const rate = rates[localCurrency] || 1;
   return usdAmount * rate;
 }
@@ -177,6 +186,10 @@ export async function convertLocalToUSD(
   localCurrency: string
 ): Promise<number> {
   const rates = await getExchangeRates();
+  if (!rates) {
+    console.warn(`Exchange rates unavailable, using rate of 1 for ${localCurrency}`);
+    return localAmount;
+  }
   const rate = rates[localCurrency] || 1;
   return localAmount / rate;
 }

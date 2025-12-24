@@ -6,7 +6,6 @@ export {
   type CardStatus,
   type Journey,
   type Destination,
-  type Chapter,
   type Card,
   type Memory,
   CATEGORY_CONFIG,

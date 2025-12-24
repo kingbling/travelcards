@@ -46,7 +46,6 @@ export type Database = {
           booking_method: string | null
           booking_url: string | null
           category: string | null
-          chapter_id: string | null
           created_at: string | null
           currency: string | null
           description: string | null
@@ -81,7 +80,6 @@ export type Database = {
           booking_method?: string | null
           booking_url?: string | null
           category?: string | null
-          chapter_id?: string | null
           created_at?: string | null
           currency?: string | null
           description?: string | null
@@ -116,7 +114,6 @@ export type Database = {
           booking_method?: string | null
           booking_url?: string | null
           category?: string | null
-          chapter_id?: string | null
           created_at?: string | null
           currency?: string | null
           description?: string | null
@@ -147,58 +144,7 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "cards_chapter_id_fkey"
-            columns: ["chapter_id"]
-            isOneToOne: false
-            referencedRelation: "chapters"
-            referencedColumns: ["id"]
-          },
-          {
             foreignKeyName: "cards_destination_id_fkey"
-            columns: ["destination_id"]
-            isOneToOne: false
-            referencedRelation: "destinations"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      chapters: {
-        Row: {
-          card_count: number | null
-          created_at: string | null
-          description: string | null
-          destination_id: string | null
-          id: string
-          name: string
-          order_index: number | null
-          reveal_cooldown_hours: number | null
-          unlock_date: string | null
-        }
-        Insert: {
-          card_count?: number | null
-          created_at?: string | null
-          description?: string | null
-          destination_id?: string | null
-          id?: string
-          name: string
-          order_index?: number | null
-          reveal_cooldown_hours?: number | null
-          unlock_date?: string | null
-        }
-        Update: {
-          card_count?: number | null
-          created_at?: string | null
-          description?: string | null
-          destination_id?: string | null
-          id?: string
-          name?: string
-          order_index?: number | null
-          reveal_cooldown_hours?: number | null
-          unlock_date?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "chapters_destination_id_fkey"
             columns: ["destination_id"]
             isOneToOne: false
             referencedRelation: "destinations"
@@ -374,7 +320,6 @@ export type Database = {
       }
       love_letters: {
         Row: {
-          chapter_id: string | null
           content: string
           created_at: string | null
           destination_id: string | null
@@ -385,7 +330,6 @@ export type Database = {
           title: string
         }
         Insert: {
-          chapter_id?: string | null
           content: string
           created_at?: string | null
           destination_id?: string | null
@@ -396,7 +340,6 @@ export type Database = {
           title: string
         }
         Update: {
-          chapter_id?: string | null
           content?: string
           created_at?: string | null
           destination_id?: string | null
@@ -407,13 +350,6 @@ export type Database = {
           title?: string
         }
         Relationships: [
-          {
-            foreignKeyName: "love_letters_chapter_id_fkey"
-            columns: ["chapter_id"]
-            isOneToOne: false
-            referencedRelation: "chapters"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "love_letters_destination_id_fkey"
             columns: ["destination_id"]
@@ -624,6 +560,7 @@ export type Database = {
           category: string | null
           created_at: string | null
           description: string | null
+          destination_id: string | null
           estimated_cost: string | null
           generation_prompt: string | null
           id: string
@@ -640,6 +577,7 @@ export type Database = {
           category?: string | null
           created_at?: string | null
           description?: string | null
+          destination_id?: string | null
           estimated_cost?: string | null
           generation_prompt?: string | null
           id?: string
@@ -656,6 +594,7 @@ export type Database = {
           category?: string | null
           created_at?: string | null
           description?: string | null
+          destination_id?: string | null
           estimated_cost?: string | null
           generation_prompt?: string | null
           id?: string
@@ -669,6 +608,13 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "treats_destination_id_fkey"
+            columns: ["destination_id"]
+            isOneToOne: false
+            referencedRelation: "destinations"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "treats_journey_id_fkey"
             columns: ["journey_id"]

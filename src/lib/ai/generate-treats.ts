@@ -1,4 +1,5 @@
 import type { CardCategory, Rarity } from "@/types/database";
+import { treatsLogger } from "@/lib/logger";
 
 // ============================================================================
 // Types
@@ -239,7 +240,7 @@ export function parseTreatsResponse(response: string): GeneratedTreat[] {
       pictureUrl: treat.pictureUrl || null,
     }));
   } catch (error) {
-    console.error("[TREATS] Failed to parse treats response:", error);
+    treatsLogger.error("Failed to parse treats response:", error);
     throw new Error("Failed to parse AI response as JSON");
   }
 }

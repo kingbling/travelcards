@@ -82,11 +82,3 @@ export function CopyLinkButton({ uniqueSlug }: { uniqueSlug: string }) {
     </button>
   );
 }
-
-export function JourneyShareLink({ uniqueSlug }: { uniqueSlug: string }) {
-  return (
-    <p className="font-mono text-[#2C1810]">
-      {typeof window !== "undefined" ? window.location.origin : ""}/j/{uniqueSlug}
-    </p>
-  );
-}

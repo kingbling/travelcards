@@ -1,19 +1,27 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
-import { ArrowLeft, Trash2, Sparkles, Plus, X, AlertTriangle } from "lucide-react";
-import type { Treat } from "@/types/database";
+import { ArrowLeft, Trash2, Sparkles, Plus, X, MapPin, Globe, ChevronDown } from "lucide-react";
+import type { Treat, Destination } from "@/types/database";
 
 export default function TreatsPage() {
   const params = useParams();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const journeyId = params.id as string;
   const supabase = createClient();
 
+  // Get initial destination from URL query param
+  const initialDestination = searchParams.get("destination") || "all";
+
   const [treats, setTreats] = useState<Treat[]>([]);
+  const [destinations, setDestinations] = useState<Destination[]>([]);
+  const [journeyName, setJourneyName] = useState<string>("");
   const [isLoading, setIsLoading] = useState(true);
+  const [selectedDestination, setSelectedDestination] = useState<string>(initialDestination);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [isDeletingAll, setIsDeletingAll] = useState(false);
   const [showCreateForm, setShowCreateForm] = useState(false);
@@ -24,27 +32,71 @@ export default function TreatsPage() {
     category: "culture",
     rarity: "common",
     estimated_cost: "Free",
+    destination_id: initialDestination === "all" || initialDestination === "global" ? "" : initialDestination,
   });
 
   useEffect(() => {
-    loadTreats();
+    loadData();
   }, [journeyId]);
 
-  const loadTreats = async () => {
+  const loadData = async () => {
     setIsLoading(true);
 
-    const { data } = await supabase
+    // Load journey with destinations
+    const { data: journeyData } = await supabase
+      .from("journeys")
+      .select(`
+        name,
+        destinations(id, name, country, start_date)
+      `)
+      .eq("id", journeyId)
+      .single();
+
+    if (journeyData) {
+      setJourneyName(journeyData.name);
+      // Sort destinations by start_date
+      const sortedDests = (journeyData.destinations as Destination[] || []).sort((a, b) => {
+        if (!a.start_date) return 1;
+        if (!b.start_date) return -1;
+        return new Date(a.start_date).getTime() - new Date(b.start_date).getTime();
+      });
+      setDestinations(sortedDests);
+    }
+
+    // Load treats
+    const { data: treatsData } = await supabase
       .from("treats")
       .select("*")
       .eq("journey_id", journeyId)
       .order("order_index", { ascending: true });
 
-    if (data) {
-      // Map to Treat type (destination_id will be null since column doesn't exist)
-      setTreats(data.map(t => ({ ...t, destination_id: null })) as Treat[]);
+    if (treatsData) {
+      setTreats(treatsData as Treat[]);
     }
 
     setIsLoading(false);
+  };
+
+  // Handle destination change and update URL
+  const handleDestinationChange = (destId: string) => {
+    setSelectedDestination(destId);
+    const newUrl = destId === "all"
+      ? `/admin/journeys/${journeyId}/treats`
+      : `/admin/journeys/${journeyId}/treats?destination=${destId}`;
+    router.push(newUrl, { scroll: false });
+  };
+
+  // Filter treats based on selected destination
+  const filteredTreats = treats.filter(treat => {
+    if (selectedDestination === "all") return true;
+    if (selectedDestination === "global") return !treat.destination_id;
+    return treat.destination_id === selectedDestination;
+  });
+
+  const filteredStats = {
+    total: filteredTreats.length,
+    revealed: filteredTreats.filter(t => t.is_revealed).length,
+    unrevealed: filteredTreats.filter(t => !t.is_revealed).length,
   };
 
   const handleDelete = async (treatId: string) => {
@@ -76,27 +128,28 @@ export default function TreatsPage() {
   };
 
   const handleDeleteAllUnrevealed = async () => {
-    const unrevealedCount = treats.filter((t) => !t.is_revealed).length;
+    const unrevealedTreats = filteredTreats.filter((t) => !t.is_revealed);
 
-    if (unrevealedCount === 0) {
+    if (unrevealedTreats.length === 0) {
       alert("No unrevealed treats to delete.");
       return;
     }
 
-    if (!confirm(`Delete all ${unrevealedCount} unrevealed treats? This cannot be undone.`)) {
+    if (!confirm(`Delete ${unrevealedTreats.length} unrevealed treats? This cannot be undone.`)) {
       return;
     }
 
     setIsDeletingAll(true);
 
+    // Delete each unrevealed treat in the filtered list
+    const idsToDelete = unrevealedTreats.map(t => t.id);
     const { error } = await supabase
       .from("treats")
       .delete()
-      .eq("journey_id", journeyId)
-      .eq("is_revealed", false);
+      .in("id", idsToDelete);
 
     if (!error) {
-      setTreats(treats.filter((t) => t.is_revealed));
+      setTreats(treats.filter((t) => !idsToDelete.includes(t.id)));
     } else {
       alert("Failed to delete treats.");
     }
@@ -121,6 +174,7 @@ export default function TreatsPage() {
       .from("treats")
       .insert({
         journey_id: journeyId,
+        destination_id: newTreat.destination_id || null,
         name: newTreat.name,
         description: newTreat.description,
         category: newTreat.category,
@@ -133,7 +187,7 @@ export default function TreatsPage() {
       .single();
 
     if (!error && data) {
-      setTreats([...treats, { ...data, destination_id: null } as Treat]);
+      setTreats([...treats, data as Treat]);
       setShowCreateForm(false);
       setNewTreat({
         name: "",
@@ -141,10 +195,17 @@ export default function TreatsPage() {
         category: "culture",
         rarity: "common",
         estimated_cost: "Free",
+        destination_id: selectedDestination === "all" || selectedDestination === "global" ? "" : selectedDestination,
       });
     }
 
     setIsCreating(false);
+  };
+
+  // Helper to get destination name
+  const getDestinationName = (destId: string | null) => {
+    if (!destId) return "Journey-wide";
+    return destinations.find(d => d.id === destId)?.name || "Unknown";
   };
 
   if (isLoading) {
@@ -154,9 +215,6 @@ export default function TreatsPage() {
       </div>
     );
   }
-
-  const revealedCount = treats.filter((t) => t.is_revealed).length;
-  const unrevealedCount = treats.length - revealedCount;
 
   return (
     <div>
@@ -170,41 +228,84 @@ export default function TreatsPage() {
       </Link>
 
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-8">
-        <div>
-          <h1 className="font-serif text-3xl text-[#2C1810] mb-2">Treats</h1>
-          <p className="text-[#6B5344]">Small surprises for your recipient</p>
-          <p className="text-sm text-[#6B5344] mt-1">
-            {treats.length} total • {revealedCount} revealed • {unrevealedCount} pending
-          </p>
-        </div>
+      <div className="mb-6">
+        <h1 className="font-serif text-3xl text-[#2C1810] mb-2">Treats</h1>
+        <p className="text-[#6B5344]">{journeyName}</p>
+      </div>
 
-        <div className="flex flex-wrap items-center gap-3">
-          {unrevealedCount > 0 && (
-            <button
-              onClick={handleDeleteAllUnrevealed}
-              disabled={isDeletingAll}
-              className="inline-flex items-center gap-2 px-4 py-2.5 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg font-medium hover:bg-red-100 transition-colors disabled:opacity-50"
-            >
-              <Trash2 className="w-4 h-4" />
-              {isDeletingAll ? "Deleting..." : `Delete ${unrevealedCount} Unrevealed`}
-            </button>
-          )}
+      {/* Destination Selector */}
+      <div className="bg-white rounded-xl p-4 shadow-sm border border-[#E5DDD5] mb-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <MapPin className="w-5 h-5 text-[#C9A227]" />
+            <div className="relative">
+              <select
+                value={selectedDestination}
+                onChange={(e) => handleDestinationChange(e.target.value)}
+                className="appearance-none bg-[#FAF0E6] px-4 py-2 pr-10 rounded-lg text-[#2C1810] font-medium focus:outline-none focus:ring-2 focus:ring-[#C9A227]/50 cursor-pointer"
+              >
+                <option value="all">All Treats</option>
+                <option value="global">Journey-wide (Global)</option>
+                {destinations.map(dest => (
+                  <option key={dest.id} value={dest.id}>
+                    {dest.name}{dest.country ? `, ${dest.country}` : ""}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#6B5344] pointer-events-none" />
+            </div>
+          </div>
+
+          <div className="flex items-center gap-4 text-sm text-[#6B5344]">
+            <span>{filteredStats.total} treats</span>
+            {filteredStats.revealed > 0 && (
+              <span className="text-blue-600">{filteredStats.revealed} revealed</span>
+            )}
+            {filteredStats.unrevealed > 0 && (
+              <span className="text-[#E07B39]">{filteredStats.unrevealed} pending</span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Action Buttons */}
+      <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+        <div className="flex items-center gap-3">
+          <Link
+            href={selectedDestination !== "all" && selectedDestination !== "global"
+              ? `/admin/journeys/${journeyId}/treats/generate?destination=${selectedDestination}`
+              : `/admin/journeys/${journeyId}/treats/generate`
+            }
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-[#E07B39] to-[#C9A227] text-white rounded-lg text-sm font-medium hover:shadow-md transition-all"
+          >
+            <Sparkles className="w-4 h-4" />
+            Generate Treats
+          </Link>
           <button
-            onClick={() => setShowCreateForm(true)}
+            onClick={() => {
+              setNewTreat({
+                ...newTreat,
+                destination_id: selectedDestination === "all" || selectedDestination === "global" ? "" : selectedDestination,
+              });
+              setShowCreateForm(true);
+            }}
             className="inline-flex items-center gap-2 px-4 py-2.5 bg-white border border-[#E5DDD5] text-[#2C1810] rounded-lg text-sm font-medium hover:border-[#C9A227] hover:bg-[#FAF0E6]/50 transition-colors"
           >
             <Plus className="w-4 h-4" />
             Create Custom
           </button>
-          <Link
-            href={`/admin/journeys/${journeyId}/treats/generate`}
-            className="inline-flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-[#E07B39] to-[#C9A227] text-white rounded-lg text-sm font-medium hover:shadow-md hover:shadow-[#E07B39]/20 transition-all"
-          >
-            <Sparkles className="w-4 h-4" />
-            Generate with AI
-          </Link>
         </div>
+
+        {filteredStats.unrevealed > 0 && (
+          <button
+            onClick={handleDeleteAllUnrevealed}
+            disabled={isDeletingAll}
+            className="inline-flex items-center gap-2 px-4 py-2.5 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg font-medium hover:bg-red-100 transition-colors disabled:opacity-50"
+          >
+            <Trash2 className="w-4 h-4" />
+            {isDeletingAll ? "Deleting..." : `Delete ${filteredStats.unrevealed} Unrevealed`}
+          </button>
+        )}
       </div>
 
       {/* Create Form */}
@@ -247,6 +348,28 @@ export default function TreatsPage() {
                 rows={3}
                 className="w-full px-4 py-2.5 rounded-lg border border-[#E5DDD5] focus:outline-none focus:ring-2 focus:ring-[#C9A227]/50 focus:border-[#C9A227]"
               />
+            </div>
+
+            {/* Destination selector */}
+            <div>
+              <label className="block text-sm font-medium text-[#2C1810] mb-2">
+                Destination
+              </label>
+              <select
+                value={newTreat.destination_id}
+                onChange={(e) => setNewTreat({ ...newTreat, destination_id: e.target.value })}
+                className="w-full px-4 py-2.5 rounded-lg border border-[#E5DDD5] focus:outline-none focus:ring-2 focus:ring-[#C9A227]/50 focus:border-[#C9A227]"
+              >
+                <option value="">Journey-wide (Global)</option>
+                {destinations.map(dest => (
+                  <option key={dest.id} value={dest.id}>
+                    {dest.name}{dest.country ? `, ${dest.country}` : ""}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-[#6B5344] mt-1">
+                Journey-wide treats are always available. Destination treats are tied to a specific location.
+              </p>
             </div>
 
             {/* Meta fields */}
@@ -321,25 +444,34 @@ export default function TreatsPage() {
       )}
 
       {/* Treats List */}
-      {treats.length === 0 ? (
+      {filteredTreats.length === 0 ? (
         <div className="bg-white rounded-xl shadow-sm p-12 text-center border border-[#E5DDD5]">
           <span className="text-6xl mb-4 block">🎁</span>
           <h2 className="font-serif text-2xl text-[#2C1810] mb-2">
-            No treats yet
+            {selectedDestination !== "all" ? "No treats for this selection" : "No treats yet"}
           </h2>
           <p className="text-[#6B5344] mb-6">
             Generate treats with AI or create your own custom treats
           </p>
           <div className="flex flex-wrap gap-3 justify-center">
             <button
-              onClick={() => setShowCreateForm(true)}
+              onClick={() => {
+                setNewTreat({
+                  ...newTreat,
+                  destination_id: selectedDestination === "all" || selectedDestination === "global" ? "" : selectedDestination,
+                });
+                setShowCreateForm(true);
+              }}
               className="inline-flex items-center gap-2 px-4 py-2.5 bg-white border border-[#E5DDD5] text-[#2C1810] rounded-lg text-sm font-medium hover:border-[#C9A227] transition-colors"
             >
               <Plus className="w-4 h-4" />
               Create Custom
             </button>
             <Link
-              href={`/admin/journeys/${journeyId}/treats/generate`}
+              href={selectedDestination !== "all" && selectedDestination !== "global"
+                ? `/admin/journeys/${journeyId}/treats/generate?destination=${selectedDestination}`
+                : `/admin/journeys/${journeyId}/treats/generate`
+              }
               className="inline-flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-[#E07B39] to-[#C9A227] text-white rounded-lg text-sm font-medium hover:shadow-md hover:shadow-[#E07B39]/20 transition-all"
             >
               <Sparkles className="w-4 h-4" />
@@ -349,7 +481,7 @@ export default function TreatsPage() {
         </div>
       ) : (
         <div className="grid md:grid-cols-2 gap-4">
-          {treats.map((treat) => (
+          {filteredTreats.map((treat) => (
             <div
               key={treat.id}
               className={`bg-white rounded-xl p-5 shadow-sm border transition-all ${
@@ -359,11 +491,25 @@ export default function TreatsPage() {
               }`}
             >
               {/* Header row */}
-              <div className="flex items-start justify-between gap-3 mb-3">
+              <div className="flex items-start justify-between gap-3 mb-2">
                 <div className="flex-1 min-w-0">
                   <h3 className="font-serif text-lg text-[#2C1810] mb-1 truncate">
                     {treat.name}
                   </h3>
+                  {/* Destination badge */}
+                  <div className="flex items-center gap-1.5 text-xs text-[#6B5344] mb-2">
+                    {treat.destination_id ? (
+                      <>
+                        <MapPin className="w-3 h-3" />
+                        <span>{getDestinationName(treat.destination_id)}</span>
+                      </>
+                    ) : (
+                      <>
+                        <Globe className="w-3 h-3" />
+                        <span>Journey-wide</span>
+                      </>
+                    )}
+                  </div>
                   {/* Treat Meta */}
                   <div className="flex flex-wrap items-center gap-2 text-xs text-[#6B5344]">
                     {treat.estimated_cost && (

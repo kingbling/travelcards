@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import {
@@ -13,11 +13,10 @@ import {
   Clock,
   DollarSign,
   ExternalLink,
-  Filter,
   Save,
   Sparkles,
+  ChevronDown,
 } from "lucide-react";
-import { ResetButton } from "@/components/admin/ResetButton";
 import { CATEGORY_CONFIG, RARITY_CONFIG, PROFILE_CONFIG } from "@/types/database";
 import type { Card, CardCategory, TargetProfile, Rarity } from "@/types/database";
 
@@ -36,13 +35,17 @@ interface Journey {
 export default function ManageCardsPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const journeyId = params.id as string;
   const supabase = createClient();
+
+  // Get initial destination from URL query param
+  const initialDestination = searchParams.get("destination") || "all";
 
   const [journey, setJourney] = useState<Journey | null>(null);
   const [cards, setCards] = useState<Card[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [filterDestination, setFilterDestination] = useState<string>("all");
+  const [selectedDestination, setSelectedDestination] = useState<string>(initialDestination);
   const [editingCard, setEditingCard] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Partial<Card>>({});
   const [isSaving, setIsSaving] = useState(false);
@@ -60,7 +63,7 @@ export default function ManageCardsPage() {
         .from("journeys")
         .select(`
           id, name,
-          destinations(id, name, country)
+          destinations(id, name, country, start_date)
         `)
         .eq("id", journeyId)
         .single();
@@ -71,7 +74,15 @@ export default function ManageCardsPage() {
         return;
       }
 
-      setJourney(journeyData as unknown as Journey);
+      // Sort destinations by start_date
+      type DestWithDate = Destination & { start_date?: string | null };
+      const destinations = journeyData.destinations as DestWithDate[];
+      const sortedDestinations = destinations.sort((a, b) => {
+        if (!a.start_date) return 1;
+        if (!b.start_date) return -1;
+        return new Date(a.start_date).getTime() - new Date(b.start_date).getTime();
+      });
+      setJourney({ ...journeyData, destinations: sortedDestinations } as unknown as Journey);
 
       // Fetch all cards for this journey's destinations
       const destinationIds = (journeyData.destinations as Destination[])?.map(d => d.id) || [];
@@ -94,11 +105,31 @@ export default function ManageCardsPage() {
     loadData();
   }, [journeyId, supabase]);
 
-  // Filter cards
+  // Filter cards by selected destination
   const filteredCards = cards.filter(card => {
-    if (filterDestination !== "all" && card.destination_id !== filterDestination) return false;
+    if (selectedDestination !== "all" && card.destination_id !== selectedDestination) return false;
     return true;
   });
+
+  // Get stats for selected destination
+  const selectedDestinationData = selectedDestination !== "all"
+    ? journey?.destinations.find(d => d.id === selectedDestination)
+    : null;
+
+  const filteredStats = {
+    total: filteredCards.length,
+    revealed: filteredCards.filter(c => c.is_revealed).length,
+    approved: filteredCards.filter(c => c.status === "approved").length,
+  };
+
+  // Handle destination change and update URL
+  const handleDestinationChange = (destId: string) => {
+    setSelectedDestination(destId);
+    const newUrl = destId === "all"
+      ? `/admin/journeys/${journeyId}/cards`
+      : `/admin/journeys/${journeyId}/cards?destination=${destId}`;
+    router.push(newUrl, { scroll: false });
+  };
 
   // Delete card (and its reveal record)
   const handleDelete = async (cardId: string) => {
@@ -197,51 +228,79 @@ export default function ManageCardsPage() {
       </Link>
 
       {/* Header */}
-      <div className="flex items-start justify-between mb-8">
-        <div>
-          <h1 className="font-serif text-3xl text-[#2C1810] mb-2">Saved Cards</h1>
-          <p className="text-[#6B5344]">{journey.name}</p>
-          <p className="text-sm mt-2 text-emerald-600">{cards.length} cards total</p>
-        </div>
+      <div className="mb-6">
+        <h1 className="font-serif text-3xl text-[#2C1810] mb-2">Experience Cards</h1>
+        <p className="text-[#6B5344]">{journey.name}</p>
+      </div>
 
-        <div className="flex items-center gap-3">
-          <ResetButton
-            journeyId={journeyId}
-            variant="danger"
-            onResetComplete={() => router.refresh()}
-          />
-          <Link
-            href={`/admin/journeys/${journeyId}/generate`}
-            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-[#E07B39] to-[#C9A227] text-white rounded-lg font-medium hover:shadow-lg transition-shadow"
-          >
-            <Sparkles className="w-4 h-4" />
-            Generate More
-          </Link>
+      {/* Destination Selector */}
+      <div className="bg-white rounded-xl p-4 shadow-sm border border-[#E5DDD5] mb-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <MapPin className="w-5 h-5 text-[#E07B39]" />
+            <div className="relative">
+              <select
+                value={selectedDestination}
+                onChange={(e) => handleDestinationChange(e.target.value)}
+                className="appearance-none bg-[#FAF0E6] px-4 py-2 pr-10 rounded-lg text-[#2C1810] font-medium focus:outline-none focus:ring-2 focus:ring-[#C9A227]/50 cursor-pointer"
+              >
+                <option value="all">All Destinations</option>
+                {journey.destinations.map(dest => (
+                  <option key={dest.id} value={dest.id}>
+                    {dest.name}{dest.country ? `, ${dest.country}` : ""}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#6B5344] pointer-events-none" />
+            </div>
+          </div>
+
+          <div className="flex items-center gap-4 text-sm text-[#6B5344]">
+            <span>{filteredStats.total} cards</span>
+            <span className="text-emerald-600">{filteredStats.approved} approved</span>
+            {filteredStats.revealed > 0 && (
+              <span className="text-blue-600">{filteredStats.revealed} revealed</span>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* Filters */}
-      {journey.destinations.length > 1 && (
-        <div className="bg-white rounded-xl p-4 shadow-sm border border-[#E5DDD5] mb-6 flex items-center gap-4">
-          <Filter className="w-5 h-5 text-[#6B5344]" />
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-[#6B5344]">Destination:</span>
-            <select
-              value={filterDestination}
-              onChange={(e) => setFilterDestination(e.target.value)}
-              className="px-3 py-1.5 border border-[#E5DDD5] rounded-lg text-sm focus:border-[#C9A227] outline-none"
-            >
-              <option value="all">All Destinations</option>
-              {journey.destinations.map(dest => (
-                <option key={dest.id} value={dest.id}>{dest.name}</option>
-              ))}
-            </select>
-          </div>
-          <div className="ml-auto text-sm text-[#6B5344]">
-            Showing {filteredCards.length} of {cards.length} cards
-          </div>
+      {/* Action Buttons */}
+      <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+        <div className="flex items-center gap-3">
+          <Link
+            href={selectedDestination !== "all"
+              ? `/admin/journeys/${journeyId}/generate?destination=${selectedDestination}`
+              : `/admin/journeys/${journeyId}/generate`
+            }
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-[#E07B39] to-[#C9A227] text-white rounded-lg text-sm font-medium hover:shadow-md transition-all"
+          >
+            <Sparkles className="w-4 h-4" />
+            Generate {selectedDestination !== "all" && filteredStats.total > 0 ? "More " : ""}Cards
+          </Link>
         </div>
-      )}
+
+        {filteredCards.filter(c => !c.is_revealed).length > 0 && (
+          <button
+            onClick={async () => {
+              const unrevealed = filteredCards.filter(c => !c.is_revealed);
+              if (!confirm(`Delete all ${unrevealed.length} unrevealed cards? This cannot be undone.`)) return;
+              setIsSaving(true);
+              for (const card of unrevealed) {
+                await supabase.from("reveals").delete().eq("card_id", card.id);
+                await supabase.from("cards").delete().eq("id", card.id);
+              }
+              setCards(cards.filter(c => c.is_revealed || !filteredCards.find(fc => fc.id === c.id)));
+              setIsSaving(false);
+            }}
+            disabled={isSaving}
+            className="inline-flex items-center gap-2 px-4 py-2.5 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg font-medium hover:bg-red-100 transition-colors disabled:opacity-50"
+          >
+            <Trash2 className="w-4 h-4" />
+            Delete {filteredCards.filter(c => !c.is_revealed).length} Unrevealed
+          </button>
+        )}
+      </div>
 
       {error && (
         <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-red-600 mb-6">
@@ -254,13 +313,12 @@ export default function ManageCardsPage() {
       {filteredCards.length === 0 ? (
         <div className="text-center py-16 bg-white rounded-xl border border-[#E5DDD5]">
           <Sparkles className="w-12 h-12 text-[#C9A227] mx-auto mb-4" />
-          <p className="text-[#6B5344] mb-4">No cards yet</p>
-          <Link
-            href={`/admin/journeys/${journeyId}/generate`}
-            className="text-[#E07B39] hover:underline"
-          >
-            Generate some cards
-          </Link>
+          <h2 className="font-serif text-2xl text-[#2C1810] mb-2">
+            {selectedDestination !== "all" ? "No cards for this destination" : "No cards yet"}
+          </h2>
+          <p className="text-[#6B5344]">
+            Generate AI-powered experience cards for your travelers using the button above
+          </p>
         </div>
       ) : (
         <div className="space-y-4">

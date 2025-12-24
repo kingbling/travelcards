@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
+import { resetLogger } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 
@@ -48,7 +49,7 @@ export async function POST(
       }, { status: 400 });
     }
 
-    console.log(`[RESET] Resetting journey ${journeyId} with ${cardIds.length} cards`);
+    resetLogger.info(`Resetting journey ${journeyId} with ${cardIds.length} cards`);
 
     // 4. Use service client to bypass RLS for deleting reveals
     const serviceClient = createServiceClient();
@@ -67,13 +68,13 @@ export async function POST(
       .eq("journey_id", journeyId);
 
     if (deleteError) {
-      console.error("[RESET] Failed to delete reveals:", deleteError);
+      resetLogger.error("Failed to delete reveals:", deleteError);
       return NextResponse.json({
         error: "Failed to reset reveals"
       }, { status: 500 });
     }
 
-    console.log(`[RESET] Deleted ${revealCount || 0} reveal records for journey ${journeyId}`);
+    resetLogger.info(`Deleted ${revealCount || 0} reveal records for journey ${journeyId}`);
 
     // 6. Calculate simple progressive reveal dates
     // Each card gets a reveal_date based on its position and reveals_per_week setting
@@ -122,7 +123,7 @@ export async function POST(
     const errors = results.filter(r => r.error);
 
     if (errors.length > 0) {
-      console.error("[RESET] Failed to update cards:", errors);
+      resetLogger.error("Failed to update cards:", errors);
       return NextResponse.json({
         error: "Failed to update cards"
       }, { status: 500 });
@@ -131,24 +132,34 @@ export async function POST(
     // 7. Reset all treats for this journey
     const { count: treatsCount } = await serviceClient
       .from("treats")
-      .select("id", { count: "exact", head: true })
+      .select("id", { count: "exact" })
       .eq("journey_id", journeyId)
       .eq("is_revealed", true);
 
-    const { error: treatsError } = await serviceClient
-      .from("treats")
-      .update({
-        is_revealed: false,
-        revealed_at: null,
-      })
-      .eq("journey_id", journeyId);
+    resetLogger.info(`Found ${treatsCount || 0} revealed treats to reset`);
 
-    if (treatsError) {
-      console.error("[RESET] Failed to reset treats:", treatsError);
-      // Don't fail the whole operation, just log it
+    if (treatsCount && treatsCount > 0) {
+      const { error: treatsError, data: updatedTreats } = await serviceClient
+        .from("treats")
+        .update({
+          is_revealed: false,
+          revealed_at: null,
+        })
+        .eq("journey_id", journeyId)
+        .eq("is_revealed", true)
+        .select();
+
+      if (treatsError) {
+        resetLogger.error("Failed to reset treats:", treatsError);
+        return NextResponse.json({
+          error: "Failed to reset treats: " + treatsError.message
+        }, { status: 500 });
+      }
+
+      resetLogger.info(`Reset ${updatedTreats?.length || 0} treats`);
     }
 
-    console.log(`[RESET] Successfully reset journey ${journeyId}, including ${treatsCount || 0} treats`);
+    resetLogger.info(`Successfully reset journey ${journeyId}`);
 
     return NextResponse.json({
       success: true,
@@ -160,7 +171,7 @@ export async function POST(
       message: `Reset complete! ${cardIds.length} cards, ${treatsCount || 0} treats reset`,
     });
   } catch (error) {
-    console.error("[RESET] Error:", error);
+    resetLogger.error("Error:", error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Reset failed" },
       { status: 500 }

@@ -29,23 +29,15 @@ export async function GET(
   }
 
   // Verify card belongs to this journey by checking the destination
-  if (card.chapter_id) {
-    const { data: chapter } = await supabase
-      .from("chapters")
-      .select("destination_id")
-      .eq("id", card.chapter_id)
+  if (card.destination_id) {
+    const { data: destination } = await supabase
+      .from("destinations")
+      .select("journey_id")
+      .eq("id", card.destination_id)
       .single();
 
-    if (chapter?.destination_id) {
-      const { data: destination } = await supabase
-        .from("destinations")
-        .select("journey_id")
-        .eq("id", chapter.destination_id)
-        .single();
-
-      if (!destination || destination.journey_id !== result.journey.id) {
-        return NextResponse.json({ error: "Card not found" }, { status: 404 });
-      }
+    if (!destination || destination.journey_id !== result.journey.id) {
+      return NextResponse.json({ error: "Card not found" }, { status: 404 });
     }
   }
 

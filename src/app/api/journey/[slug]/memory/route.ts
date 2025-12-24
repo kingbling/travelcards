@@ -23,7 +23,7 @@ export async function POST(
   // Verify card exists and is revealed
   const { data: card, error: cardError } = await supabase
     .from("cards")
-    .select("id, chapter_id")
+    .select("id, destination_id")
     .eq("id", cardId)
     .eq("is_revealed", true)
     .single();
@@ -33,23 +33,15 @@ export async function POST(
   }
 
   // Verify card belongs to this journey
-  if (card.chapter_id) {
-    const { data: chapter } = await supabase
-      .from("chapters")
-      .select("destination_id")
-      .eq("id", card.chapter_id)
+  if (card.destination_id) {
+    const { data: destination } = await supabase
+      .from("destinations")
+      .select("journey_id")
+      .eq("id", card.destination_id)
       .single();
 
-    if (chapter?.destination_id) {
-      const { data: destination } = await supabase
-        .from("destinations")
-        .select("journey_id")
-        .eq("id", chapter.destination_id)
-        .single();
-
-      if (!destination || destination.journey_id !== result.journey.id) {
-        return NextResponse.json({ error: "Card not found" }, { status: 404 });
-      }
+    if (!destination || destination.journey_id !== result.journey.id) {
+      return NextResponse.json({ error: "Card not found" }, { status: 404 });
     }
   }
 

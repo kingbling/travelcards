@@ -21,7 +21,6 @@ import type { LoveLetter, DisplayOn } from "@/types/database";
 const DISPLAY_OPTIONS: { value: DisplayOn; label: string; description: string }[] = [
   { value: "intro", label: "Journey Intro", description: "Shown when journey first opens" },
   { value: "destination_start", label: "Destination Start", description: "Shown when entering a destination" },
-  { value: "chapter_start", label: "Chapter Start", description: "Shown when a chapter begins" },
   { value: "card_reveal", label: "Card Reveal", description: "Shown when a card is revealed" },
 ];
 
@@ -288,10 +287,9 @@ export default function PersonalNotesPage() {
                 value={editingNote.display_on}
                 onChange={(e) => {
                   const newDisplayOn = e.target.value as DisplayOn;
-                  const exampleMessages = {
+                  const exampleMessages: Record<DisplayOn, string> = {
                     intro: "I've been planning this gift for months, imagining your face as you discover each surprise...",
                     destination_start: "I can't wait to explore this place with you, it's been on my bucket list forever...",
-                    chapter_start: "Get ready for something different, this next part is going to be special...",
                     card_reveal: "This experience reminds me of our first date, I know you're going to love it...",
                   };
                   setEditingNote({

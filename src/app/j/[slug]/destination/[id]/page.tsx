@@ -63,6 +63,7 @@ interface DestinationData {
   cards: Card[];
   journey_name: string;
   cardsQuotaState: Record<string, CardQuotaState>;
+  revealCardChoices?: number;
   quotaInfo: QuotaInfo;
   nextDestination: NextDestination | null;
 }
@@ -85,7 +86,7 @@ export default function DestinationPage() {
   const [revealingCard, setRevealingCard] = useState<Card | null>(null);
   const [showReveal, setShowReveal] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [shuffleSeed, setShuffleSeed] = useState(Math.random());
+  const [shuffledCards, setShuffledCards] = useState<Card[]>([]);
 
   const { isAuthenticated, isLoading: authLoading } = useJourneyAuth({ slug });
 
@@ -97,8 +98,6 @@ export default function DestinationPage() {
         if (res.ok) {
           const data = await res.json();
           setDestination(data);
-          // Force new shuffle when data is fetched
-          setShuffleSeed(Math.random());
         }
       } catch {
         // Error fetching
@@ -128,6 +127,10 @@ export default function DestinationPage() {
       const data = await res.json();
 
       if (res.ok) {
+        // Clear stored shuffle after successful reveal - forces new shuffle on next visit
+        const storageKey = `shuffle-${slug}-${destinationId}`;
+        localStorage.removeItem(storageKey);
+
         // Update local state
         setDestination((prev) =>
           prev
@@ -224,10 +227,9 @@ export default function DestinationPage() {
     return `Starts in ${weeks} weeks`;
   };
 
-  // Fisher-Yates shuffle algorithm - memoized with shuffle seed
-  // MUST be before early returns (Rules of Hooks)
-  const cardChoices = useMemo(() => {
-    if (!destination) return [];
+  // Shuffle and persist card order to localStorage
+  useEffect(() => {
+    if (!destination) return;
 
     const hiddenCards = destination.cards.filter((c) => !c.is_revealed);
     const revealableCards = hiddenCards.filter((card) => {
@@ -235,19 +237,44 @@ export default function DestinationPage() {
       return state?.canReveal ?? false;
     });
 
-    if (revealableCards.length === 0) return [];
+    if (revealableCards.length === 0) {
+      setShuffledCards([]);
+      return;
+    }
 
+    // Check localStorage for existing shuffle
+    const storageKey = `shuffle-${slug}-${destinationId}`;
+    const stored = localStorage.getItem(storageKey);
+
+    if (stored) {
+      try {
+        const storedIds = JSON.parse(stored);
+        // Reconstruct cards in stored order (if they still exist and are revealable)
+        const reconstructed = storedIds
+          .map((id: string) => revealableCards.find((c) => c.id === id))
+          .filter((c: Card | undefined): c is Card => c !== undefined);
+
+        // If stored cards are valid and match current revealable set
+        if (reconstructed.length > 0 && reconstructed.length === revealableCards.length) {
+          setShuffledCards(reconstructed);
+          return;
+        }
+      } catch (e) {
+        // Invalid stored data, continue to fresh shuffle
+      }
+    }
+
+    // Fresh shuffle (server already randomized, but we shuffle again for extra randomness)
     const cards = [...revealableCards];
-
-    // Fisher-Yates shuffle - truly random
     for (let i = cards.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [cards[i], cards[j]] = [cards[j], cards[i]];
     }
 
-    // Return ALL shuffled cards (all revealable cards if quota available)
-    return cards;
-  }, [destination, shuffleSeed]);
+    // Store card IDs in localStorage
+    localStorage.setItem(storageKey, JSON.stringify(cards.map((c) => c.id)));
+    setShuffledCards(cards);
+  }, [destination, slug, destinationId]);
 
   const getColors = () => getThemeColors(destination?.theme_colors);
 
@@ -266,6 +293,10 @@ export default function DestinationPage() {
   const colors = getColors();
   const revealedCards = destination.cards.filter((c) => c.is_revealed);
   const hiddenCards = destination.cards.filter((c) => !c.is_revealed);
+
+  // Limit displayed mystery cards to reveal_card_choices setting
+  const revealCardChoices = destination.revealCardChoices || 1;
+  const cardChoices = shuffledCards.slice(0, revealCardChoices);
 
   // Separate locked cards into time-locked vs other
   const now = new Date();

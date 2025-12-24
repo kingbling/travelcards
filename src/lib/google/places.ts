@@ -1,6 +1,7 @@
 // Google Places API client for geocoding and place discovery
 
 import { getCurrencyForCountry, formatPriceWithUSD } from "@/lib/currency/exchange";
+import { googleLogger } from "@/lib/logger";
 
 const GOOGLE_PLACES_API_KEY = process.env.GOOGLE_PLACES_API_KEY;
 
@@ -38,7 +39,7 @@ export async function geocodeDestination(
   country?: string | null
 ): Promise<GeocodeResult | null> {
   if (!isGooglePlacesConfigured()) {
-    console.warn("Google Places API not configured");
+    googleLogger.warn("API not configured");
     return null;
   }
 
@@ -55,7 +56,7 @@ export async function geocodeDestination(
     const data = await response.json();
 
     if (data.status !== "OK" || !data.results?.length) {
-      console.warn(`Geocoding failed for ${query}: ${data.status}`);
+      googleLogger.warn(`Geocoding failed for ${query}: ${data.status}`);
       return null;
     }
 
@@ -67,7 +68,7 @@ export async function geocodeDestination(
       placeId: result.place_id,
     };
   } catch (error) {
-    console.error("Geocoding error:", error);
+    googleLogger.error("Geocoding error:", error);
     return null;
   }
 }
@@ -80,7 +81,7 @@ export async function searchNearbyPlaces(
   radius: number = 10000 // 10km default
 ): Promise<PlaceResult[]> {
   if (!isGooglePlacesConfigured()) {
-    console.warn("Google Places API not configured");
+    googleLogger.warn("API not configured");
     return [];
   }
 
@@ -116,7 +117,7 @@ export async function searchNearbyPlaces(
       openNow: (place.opening_hours as { open_now?: boolean } | undefined)?.open_now,
     }));
   } catch (error) {
-    console.error("Nearby search error:", error);
+    googleLogger.error("Nearby search error:", error);
     return [];
   }
 }
@@ -129,7 +130,7 @@ export async function textSearchPlaces(
   maxPages: number = 3 // Fetch up to 3 pages (60 results max)
 ): Promise<PlaceResult[]> {
   if (!isGooglePlacesConfigured()) {
-    console.warn("[GOOGLE PLACES] API not configured - missing GOOGLE_PLACES_API_KEY");
+    googleLogger.warn("API not configured - missing GOOGLE_PLACES_API_KEY");
     return [];
   }
 
@@ -175,7 +176,7 @@ export async function textSearchPlaces(
       };
     };
 
-    console.log(`[GOOGLE PLACES] Searching: "${query}" ${latitude && longitude ? `near ${latitude},${longitude}` : ''}`);
+    googleLogger.info(`Searching: "${query}" ${latitude && longitude ? `near ${latitude},${longitude}` : ''}`);
 
     // Fetch multiple pages
     do {
@@ -214,14 +215,14 @@ export async function textSearchPlaces(
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error(`[GOOGLE PLACES] HTTP ${response.status}:`, errorText);
+        googleLogger.error(`HTTP ${response.status}:`, errorText);
         break;
       }
 
       const data = await response.json();
 
       if (!data.places || data.places.length === 0) {
-        console.warn(`[GOOGLE PLACES] No results on page ${pageCount + 1} for "${query}"`);
+        googleLogger.warn(`No results on page ${pageCount + 1} for "${query}"`);
         break;
       }
 
@@ -230,7 +231,7 @@ export async function textSearchPlaces(
       allPlaces.push(...pagePlaces);
       pageCount++;
 
-      console.log(`[GOOGLE PLACES] Page ${pageCount}: Found ${pagePlaces.length} results (total: ${allPlaces.length})`);
+      googleLogger.debug(`Page ${pageCount}: Found ${pagePlaces.length} results (total: ${allPlaces.length})`);
 
       // Check for next page token
       nextPageToken = data.nextPageToken as string | undefined;
@@ -242,11 +243,11 @@ export async function textSearchPlaces(
 
     } while (nextPageToken && pageCount < maxPages);
 
-    console.log(`[GOOGLE PLACES] Completed search for "${query}": ${allPlaces.length} total results from ${pageCount} pages`);
+    googleLogger.info(`Completed search for "${query}": ${allPlaces.length} total results from ${pageCount} pages`);
 
     return allPlaces;
   } catch (error) {
-    console.error("[GOOGLE PLACES] Text search error:", error);
+    googleLogger.error("Text search error:", error);
     return [];
   }
 }
@@ -278,7 +279,7 @@ export async function getPlaceDetails(
       url: data.result.url, // Google Maps URL
     };
   } catch (error) {
-    console.error("Place details error:", error);
+    googleLogger.error("Place details error:", error);
     return null;
   }
 }
@@ -325,60 +326,81 @@ export async function convertPlacesToUnified(
 ): Promise<UnifiedExperience[]> {
   const localCurrency = getCurrencyForCountry(country);
 
-  return Promise.all(places.map(async (place) => {
-    // Convert price level (0-4) to rough estimate with real currency conversion
-    const priceUSDEstimates: Record<number, number> = {
-      0: 0,   // Free
-      1: 10,  // Budget
-      2: 25,  // Moderate
-      3: 50,  // Expensive
-      4: 100, // Luxury
-    };
+  // Use Promise.allSettled to handle individual failures gracefully
+  const results = await Promise.allSettled(
+    places.map(async (place) => {
+      try {
+        // Convert price level (0-4) to rough estimate with real currency conversion
+        const priceUSDEstimates: Record<number, number> = {
+          0: 0,   // Free
+          1: 10,  // Budget
+          2: 25,  // Moderate
+          3: 50,  // Expensive
+          4: 100, // Luxury
+        };
 
-    let priceDisplay = "Price varies";
-    let priceAmount: number | null = null;
+        let priceDisplay = "Price varies";
+        let priceAmount: number | null = null;
 
-    if (place.priceLevel !== undefined && priceUSDEstimates[place.priceLevel] !== undefined) {
-      const usdAmount = priceUSDEstimates[place.priceLevel];
-      priceAmount = usdAmount;
+        if (place.priceLevel !== undefined && priceUSDEstimates[place.priceLevel] !== undefined) {
+          const usdAmount = priceUSDEstimates[place.priceLevel];
+          priceAmount = usdAmount;
 
-      if (usdAmount === 0) {
-        priceDisplay = "Free";
-      } else {
-        // Get real currency conversion
-        try {
-          priceDisplay = await formatPriceWithUSD(usdAmount, localCurrency);
-        } catch (error) {
-          console.error("Currency conversion error:", error);
-          priceDisplay = `~$${usdAmount}`;
+          if (usdAmount === 0) {
+            priceDisplay = "Free";
+          } else {
+            // Get real currency conversion
+            try {
+              priceDisplay = await formatPriceWithUSD(usdAmount, localCurrency);
+            } catch {
+              priceDisplay = `~$${usdAmount}`;
+            }
+          }
         }
-      }
-    }
 
-    return {
-      source: "google_places" as const,
-      id: place.placeId,
-      name: place.name,
-      description: `${place.types.slice(0, 3).join(", ")} at ${place.address}`,
-      price: {
-        amount: priceAmount,
-        currency: localCurrency,
-        display: priceDisplay,
-      },
-      duration: null, // Google Places doesn't provide duration
-      rating: place.rating || null,
-      reviewCount: place.userRatingsTotal || null,
-      categories: place.types.slice(0, 5),
-      bookingUrl: place.website || null,
-      pictureUrl: place.photos?.[0] || null,
-      location: {
-        name: place.name,
-        address: place.address,
-        latitude: place.location.latitude,
-        longitude: place.location.longitude,
-      },
-    };
-  }));
+        // Safely handle potentially undefined properties
+        const types = place.types || [];
+        const location = place.location || { latitude: 0, longitude: 0 };
+
+        return {
+          source: "google_places" as const,
+          id: place.placeId,
+          name: place.name || "Unknown",
+          description: `${types.slice(0, 3).join(", ")} at ${place.address || "Unknown location"}`,
+          price: {
+            amount: priceAmount,
+            currency: localCurrency,
+            display: priceDisplay,
+          },
+          duration: null, // Google Places doesn't provide duration
+          rating: place.rating || null,
+          reviewCount: place.userRatingsTotal || null,
+          categories: types.slice(0, 5),
+          bookingUrl: place.website || null,
+          pictureUrl: place.photos?.[0] || null,
+          location: {
+            name: place.name || null,
+            address: place.address || null,
+            latitude: location.latitude,
+            longitude: location.longitude,
+          },
+        };
+      } catch (error) {
+        googleLogger.error(`Error converting place ${place.placeId}:`, error);
+        // Return null to filter out failed conversions
+        return null;
+      }
+    })
+  );
+
+  // Filter out failed conversions and extract successful results
+  const filteredResults: UnifiedExperience[] = [];
+  for (const result of results) {
+    if (result.status === "fulfilled" && result.value !== null) {
+      filteredResults.push(result.value);
+    }
+  }
+  return filteredResults;
 }
 
 // Format places for AI prompt (unified JSON format)

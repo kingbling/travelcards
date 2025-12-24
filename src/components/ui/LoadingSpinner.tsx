@@ -1,8 +1,5 @@
 "use client";
 
-import { motion } from "framer-motion";
-import { Heart } from "lucide-react";
-
 interface LoadingSpinnerProps {
   fullScreen?: boolean;
   className?: string;
@@ -10,13 +7,10 @@ interface LoadingSpinnerProps {
 
 export function LoadingSpinner({ fullScreen = true, className = "" }: LoadingSpinnerProps) {
   const spinner = (
-    <motion.div
-      className={`text-[#C9A227] ${className}`}
-      animate={{ rotate: 360 }}
-      transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-    >
-      <Heart className="w-8 h-8" />
-    </motion.div>
+    <div className={`flex flex-col items-center gap-3 ${className}`}>
+      <div className="w-10 h-10 border-3 border-[#E5DDD5] border-t-[#C9A227] rounded-full animate-spin" />
+      <p className="text-sm text-[#6B5344]">Loading...</p>
+    </div>
   );
 
   if (fullScreen) {
